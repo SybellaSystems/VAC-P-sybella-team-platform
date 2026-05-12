@@ -8,6 +8,9 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'VAC-P | Sybella Systems Ltd',
   description: 'Virtual Accountability & Collaboration Platform for Sybella Systems Ltd',
+  icons: {
+    icon: '/favicon.ico',
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -16,7 +19,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={inter.className}>
         <AuthProvider>
           {children}
-        </AuthProvider>
+         </AuthProvider>
       </body>
     </html>
   );
