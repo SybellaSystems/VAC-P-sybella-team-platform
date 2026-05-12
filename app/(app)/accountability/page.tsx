@@ -69,9 +69,10 @@ export default function AccountabilityPage() {
 
   const handleReview = async (id: string, status: AccountabilityReport['status']) => {
     await supabase.from('accountability_reports').update({ status, reviewed_by: profile?.id }).eq('id', id);
-    setReports((prev: AccountabilityReport[]) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    // Update local UI state. Avoid functional updaters to match strict TS expectations in Vercel build.
+    setReports(reports.map((r) => (r.id === id ? { ...r, status } : r)));
     if (selected?.id === id) {
-      setSelected((prev: AccountabilityReport | null) => (prev ? { ...prev, status } : null));
+      setSelected({ ...selected, status } as AccountabilityReport);
     }
   };
 
