@@ -69,8 +69,10 @@ export default function AccountabilityPage() {
 
   const handleReview = async (id: string, status: AccountabilityReport['status']) => {
     await supabase.from('accountability_reports').update({ status, reviewed_by: profile?.id }).eq('id', id);
-    setReports(prev => prev.map(r => r.id === id ? { ...r, status } : r));
-    if (selected?.id === id) setSelected(prev => prev ? { ...prev, status } : null);
+    setReports((prev: AccountabilityReport[]) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    if (selected?.id === id) {
+      setSelected((prev: AccountabilityReport | null) => (prev ? { ...prev, status } : null));
+    }
   };
 
   const filtered = reports.filter(r => {
