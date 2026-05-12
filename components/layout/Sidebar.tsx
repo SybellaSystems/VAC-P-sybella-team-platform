@@ -17,7 +17,13 @@ const allNavItems = [
   { href: '/finance', label: 'Finance', icon: DollarSign, roles: ['admin','director','finance','manager'] as Role[] },
   { href: '/analytics', label: 'Analytics', icon: BarChart3, roles: ['admin','director','manager','finance'] as Role[] },
   { href: '/admin', label: 'Admin', icon: Shield, roles: ['admin'] as Role[] },
+  { href: '/shares', label: 'Shares', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
+  { href: '/wiki', label: 'Wiki', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
+  { href: '/repo-links', label: 'Repo Links', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
+  { href: '/leave', label: 'Leave', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
+  { href: '/budget', label: 'Budget', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
 ];
+
 
 const roleColors: Record<Role, string> = {
   admin: 'bg-red-500',

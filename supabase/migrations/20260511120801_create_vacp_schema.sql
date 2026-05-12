@@ -497,3 +497,424 @@ CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_accountability_member ON accountability_reports(member_id);
 CREATE INDEX IF NOT EXISTS idx_accountability_date ON accountability_reports(report_date DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+
+-- =============================================================
+-- VAC-P Features: Shares, Wiki, Repo Links, Leave, Budget, Audit
+-- (Ported from local vac-p Downloads/vac-p version)
+-- =============================================================
+
+-- ==========================
+-- Shares & Ownership
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS shares (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  company_name TEXT NOT NULL DEFAULT 'VAC-P',
+
+  share_class TEXT DEFAULT 'COMMON',
+  total_units NUMERIC(20,6) DEFAULT 0,
+  issued_units NUMERIC(20,6) DEFAULT 0,
+  par_value NUMERIC(20,6) DEFAULT 0,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS ownership_records (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  share_id UUID REFERENCES shares(id) ON DELETE CASCADE,
+
+  user_id UUID,
+  auth_user_id UUID REFERENCES auth.users(id),
+
+  units NUMERIC(20,6) NOT NULL DEFAULT 0,
+  share_value NUMERIC(20,6),
+  market_cap NUMERIC(30,6),
+
+  acquired_at TIMESTAMPTZ DEFAULT NOW(),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb,
+
+  CONSTRAINT ownership_unique UNIQUE (share_id, auth_user_id)
+);
+
+-- ==========================
+-- Wiki / Knowledge Base
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS wiki_pages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  summary TEXT,
+
+  created_by_user_id UUID,
+  created_by_auth_user_id UUID REFERENCES auth.users(id),
+
+  is_published BOOLEAN DEFAULT true,
+  published_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- ==========================
+-- Repo / Document Links
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS repo_links (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  title TEXT NOT NULL,
+  description TEXT,
+  url TEXT NOT NULL,
+  link_type TEXT DEFAULT 'DOCUMENT',
+
+  created_by_user_id UUID,
+  created_by_auth_user_id UUID REFERENCES auth.users(id),
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- ==========================
+-- Leave Management
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS leave_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID,
+  auth_user_id UUID REFERENCES auth.users(id),
+
+  leave_type TEXT NOT NULL DEFAULT 'VACATION',
+  start_date DATE NOT NULL,
+  end_date DATE NOT NULL,
+
+  reason TEXT,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+
+  requested_at TIMESTAMPTZ DEFAULT NOW(),
+  decided_at TIMESTAMPTZ,
+
+  decided_by_user_id UUID,
+  decided_by_auth_user_id UUID REFERENCES auth.users(id),
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb,
+
+  CONSTRAINT leave_date_valid CHECK (end_date >= start_date)
+);
+
+-- ==========================
+-- Budget Proposals & Approval Workflows
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS budget_proposals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+
+  user_id UUID,
+  auth_user_id UUID REFERENCES auth.users(id),
+
+  title TEXT NOT NULL,
+  description TEXT,
+  currency TEXT NOT NULL DEFAULT 'USD',
+
+  amount NUMERIC(20,6) NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'DRAFT',
+
+  submitted_at TIMESTAMPTZ,
+  decided_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  metadata JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS approval_workflows (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  budget_proposal_id UUID REFERENCES budget_proposals(id) ON DELETE CASCADE,
+
+  step_name TEXT NOT NULL,
+  step_order INT NOT NULL,
+
+  required_role TEXT,
+
+  reviewer_user_id UUID,
+  reviewer_auth_user_id UUID REFERENCES auth.users(id),
+
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  decision_note TEXT,
+  decided_at TIMESTAMPTZ,
+
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+
+  UNIQUE (budget_proposal_id, step_order)
+);
+
+-- ==========================
+-- Audit Logs
+-- ==========================
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_id UUID,
+  auth_user_id UUID REFERENCES auth.users(id),
+
+  actor_role TEXT,
+  event_type TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id UUID,
+
+  action TEXT,
+  details TEXT,
+
+  metadata JSONB DEFAULT '{}'::jsonb,
+
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ==========================
+-- Row Level Security (RLS)
+-- ==========================
+
+ALTER TABLE shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ownership_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wiki_pages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE repo_links ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leave_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budget_proposals ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_workflows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+
+-- SUPERADMIN check helper is done inline via profiles.role
+
+-- shares + ownership (SUPERADMIN only)
+CREATE POLICY "shares_select_superadmin_only"
+ON shares FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "shares_insert_superadmin_only"
+ON shares FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "ownership_select_superadmin_only"
+ON ownership_records FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "ownership_insert_superadmin_only"
+ON ownership_records FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- wiki_pages
+CREATE POLICY "wiki_pages_select_published_or_superadmin"
+ON wiki_pages FOR SELECT
+USING (
+  is_published = true
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+  OR created_by_auth_user_id = auth.uid()
+);
+
+CREATE POLICY "wiki_pages_insert_own_or_superadmin"
+ON wiki_pages FOR INSERT
+WITH CHECK (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "wiki_pages_update_own_or_superadmin"
+ON wiki_pages FOR UPDATE
+USING (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+)
+WITH CHECK (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- repo_links
+CREATE POLICY "repo_links_select_published_or_superadmin"
+ON repo_links FOR SELECT
+USING (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+  OR created_by_auth_user_id = auth.uid()
+);
+
+CREATE POLICY "repo_links_insert_own_or_superadmin"
+ON repo_links FOR INSERT
+WITH CHECK (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "repo_links_update_own_or_superadmin"
+ON repo_links FOR UPDATE
+USING (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+)
+WITH CHECK (
+  created_by_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- leave_requests
+CREATE POLICY "leave_requests_select_own_or_superadmin"
+ON leave_requests FOR SELECT
+USING (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "leave_requests_insert_own_or_superadmin"
+ON leave_requests FOR INSERT
+WITH CHECK (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- budget_proposals
+CREATE POLICY "budget_proposals_select_own_or_superadmin"
+ON budget_proposals FOR SELECT
+USING (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "budget_proposals_insert_own_or_superadmin"
+ON budget_proposals FOR INSERT
+WITH CHECK (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- approval_workflows
+CREATE POLICY "approval_workflows_select_reviewer_or_superadmin"
+ON approval_workflows FOR SELECT
+USING (
+  reviewer_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "approval_workflows_insert_superadmin_only"
+ON approval_workflows FOR INSERT
+WITH CHECK (
+  EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "approval_workflows_update_reviewer_or_superadmin"
+ON approval_workflows FOR UPDATE
+USING (
+  reviewer_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+)
+WITH CHECK (
+  reviewer_auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+-- audit_logs
+CREATE POLICY "audit_logs_select_own_or_superadmin"
+ON audit_logs FOR SELECT
+USING (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
+CREATE POLICY "audit_logs_insert_superadmin_or_actor"
+ON audit_logs FOR INSERT
+WITH CHECK (
+  auth_user_id = auth.uid()
+  OR EXISTS (
+    SELECT 1 FROM profiles p
+    WHERE p.id = auth.uid() AND p.role = 'admin'
+  )
+);
+
