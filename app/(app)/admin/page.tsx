@@ -83,14 +83,14 @@ export default function AdminPage() {
 
   const toggleActive = async (id: string, current: boolean) => {
     await supabase.from('profiles').update({ is_active: !current }).eq('id', id);
-    setMembers((prev: Profile[]) =>
-      prev.map((m: Profile) => (m.id === id ? { ...m, is_active: !current } : m))
-    );
+
+    // Avoid updater-callback typing issues during build by refetching.
+    await loadMembers();
   };
 
   const updateRole = async (id: string, role: Role) => {
     await supabase.from('profiles').update({ role }).eq('id', id);
-    setMembers(prev => prev.map(m => m.id === id ? { ...m, role } : m));
+    await loadMembers();
   };
 
   if (!isAdmin) {
