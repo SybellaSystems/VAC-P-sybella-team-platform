@@ -83,8 +83,9 @@ export default function AdminPage() {
 
   const toggleActive = async (id: string, current: boolean) => {
     await supabase.from('profiles').update({ is_active: !current }).eq('id', id);
-    // Avoid functional setState updater to prevent implicit any typing issues in strict Vercel build.
-    setMembers(members.map(m => (m.id === id ? { ...m, is_active: !current } : m)));
+    setMembers((prev: Profile[]) =>
+      prev.map((m: Profile) => (m.id === id ? { ...m, is_active: !current } : m))
+    );
   };
 
   const updateRole = async (id: string, role: Role) => {
