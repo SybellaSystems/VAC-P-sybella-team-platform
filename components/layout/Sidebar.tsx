@@ -4,27 +4,65 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { navItemsForRole, type NavItem } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
-import { LayoutDashboard, Users, FolderKanban, MessageSquare, ChartBar as BarChart3, DollarSign, ClipboardList, Building2, LogOut, ChevronRight, Shield, ScrollText } from 'lucide-react';
+import { LogOut, ChevronRight } from 'lucide-react';
+import {
+  LayoutDashboard,
+  Briefcase,
+  CheckSquare,
+  FolderKanban,
+  LayoutGrid,
+  Building2,
+  TrendingUp,
+  MessageSquare,
+  ClipboardList,
+  DollarSign,
+  Landmark,
+  ChartBar as BarChart3,
+  Users,
+  HeartPulse,
+  Scale,
+  Megaphone,
+  BookOpen,
+  Link2,
+  CalendarRange,
+  Wallet,
+  PieChart,
+  ScrollText,
+  Shield,
+} from 'lucide-react';
 
-const allNavItems = [
-  { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/team', label: 'Team', icon: Users, roles: ['admin','director','manager','hr'] as Role[] },
-  { href: '/projects', label: 'Projects', icon: FolderKanban, roles: ['admin','director','manager','developer','designer','qa'] as Role[] },
-  { href: '/customers', label: 'Customers', icon: Building2, roles: ['admin','director','manager','sales'] as Role[] },
-  { href: '/messages', label: 'Messages', icon: MessageSquare, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/accountability', label: 'Accountability', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/finance', label: 'Finance', icon: DollarSign, roles: ['admin','director','finance','manager'] as Role[] },
-  { href: '/analytics', label: 'Analytics', icon: BarChart3, roles: ['admin','director','manager','finance'] as Role[] },
-  { href: '/admin', label: 'Admin', icon: Shield, roles: ['admin'] as Role[] },
-  { href: '/shares', label: 'Shares', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/wiki', label: 'Wiki', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/repo-links', label: 'Repo Links', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/leave', label: 'Leave', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/budget', label: 'Budget', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
-  { href: '/audit-logs', label: 'Audit Logs', icon: ScrollText, roles: ['admin', 'director'] as Role[] },
-];
+const ICON_MAP: Record<string, React.ElementType> = {
+  LayoutDashboard,
+  Briefcase,
+  CheckSquare,
+  FolderKanban,
+  LayoutGrid,
+  Building2,
+  TrendingUp,
+  MessageSquare,
+  ClipboardList,
+  DollarSign,
+  Landmark,
+  BarChart3,
+  Users,
+  HeartPulse,
+  Scale,
+  Megaphone,
+  BookOpen,
+  Link2,
+  CalendarRange,
+  Wallet,
+  PieChart,
+  ScrollText,
+  Shield,
+};
 
+function NavIcon({ name }: { name: string }) {
+  const C = ICON_MAP[name] || LayoutDashboard;
+  return <C size={18} className="flex-shrink-0" />;
+}
 
 const roleColors: Record<Role, string> = {
   admin: 'bg-red-500',
@@ -36,15 +74,14 @@ const roleColors: Record<Role, string> = {
   sales: 'bg-teal-500',
   hr: 'bg-violet-500',
   finance: 'bg-cyan-500',
+  legal_counsel: 'bg-slate-400',
+  marketing_manager: 'bg-fuchsia-500',
 };
 
 export function Sidebar() {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
-
-  const navItems = allNavItems.filter(item =>
-    profile?.role ? item.roles.includes(profile.role as Role) : false
-  );
+  const navItems = navItemsForRole(profile?.role as Role);
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -52,10 +89,9 @@ export function Sidebar() {
 
   return (
     <aside
-      className="fixed left-0 top-0 h-screen w-64 flex flex-col z-30"
+      className="hidden md:flex fixed left-0 top-0 h-screen w-64 flex-col z-30"
       style={{ background: 'hsl(220, 25%, 11%)' }}
     >
-      {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
           <span className="text-white font-bold text-sm">SS</span>
@@ -66,26 +102,24 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Nav */}
       <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        {navItems.map(({ href, label, icon: Icon }) => {
-          const isActive = pathname === href || pathname.startsWith(href + '/');
+        {navItems.map((item: NavItem) => {
+          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
           return (
             <Link
-              key={href}
-              href={href}
+              key={item.href}
+              href={item.href}
               className={cn('sidebar-link', isActive && 'active')}
               style={{ color: isActive ? 'white' : 'hsl(215, 20%, 65%)' }}
             >
-              <Icon size={18} className="flex-shrink-0" />
-              <span>{label}</span>
+              <NavIcon name={item.icon} />
+              <span>{item.label}</span>
               {isActive && <ChevronRight size={14} className="ml-auto" />}
             </Link>
           );
         })}
       </nav>
 
-      {/* User */}
       <div className="px-3 pb-4 pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
         <div className="flex items-center gap-3 px-2 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
           <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
@@ -95,10 +129,13 @@ export function Sidebar() {
             <p className="text-white text-xs font-semibold truncate">{profile?.full_name || 'Loading...'}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <div className={cn('w-1.5 h-1.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-gray-500')} />
-              <p className="text-xs capitalize" style={{ color: 'hsl(215, 15%, 55%)' }}>{profile?.role || ''}</p>
+              <p className="text-xs capitalize" style={{ color: 'hsl(215, 15%, 55%)' }}>
+                {(profile?.role || '').replace('_', ' ')}
+              </p>
             </div>
           </div>
           <button
+            type="button"
             onClick={signOut}
             className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
             title="Sign out"

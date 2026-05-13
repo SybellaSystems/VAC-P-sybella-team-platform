@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useAuth } from '@/contexts/AuthContext';
 import { logAudit } from '@/lib/audit';
+import { TopBar } from '@/components/layout/TopBar';
 
 type BudgetProposal = {
   id: string;
@@ -175,26 +176,68 @@ export default function BudgetPage() {
 
   const selectedSteps = selectedId ? stepsByProposal[selectedId] ?? [] : [];
 
-  return (
-    <div className="bg-[#050505] min-h-screen pt-28 pb-20 px-6">
-      <div className="mx-auto max-w-7xl">
-        <header className="mb-10">
-          <h1 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.4em] mb-6">
-            Budget Proposals & Approval Workflows
-          </h1>
-          <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter text-white">Finance Pipeline</h2>
-          <p className="text-white/40 mt-4 max-w-2xl">Propose budgets, follow multi-step approvals, keep a decision trail.</p>
-        </header>
+  const canActOnStep = (s: ApprovalStep) => {
+    if (!profile) return false;
+    if (s.status !== 'PENDING') return false;
+    if (profile.role === 'admin') return true;
+    if (s.required_role && profile.role === s.required_role) return true;
+    return false;
+  };
 
+  const stepUnlocked = (idx: number) => {
+    if (idx === 0) return true;
+    return selectedSteps.slice(0, idx).every((x) => x.status === 'APPROVED');
+  };
+
+  const decideStep = async (step: ApprovalStep, approved: boolean) => {
+    if (!profile || !selectedId) return;
+    setSubmitting(true);
+    await supabase
+      .from('approval_workflows')
+      .update({
+        status: approved ? 'APPROVED' : 'REJECTED',
+        decided_at: new Date().toISOString(),
+        reviewer_auth_user_id: profile.id,
+        decision_note: approved ? 'Approved' : 'Rejected',
+      })
+      .eq('id', step.id);
+    if (!approved) {
+      await supabase.from('budget_proposals').update({ status: 'REJECTED' }).eq('id', selectedId);
+    }
+    await logAudit({
+      event_type: 'budget.workflow_step',
+      entity_type: 'approval_workflow',
+      entity_id: step.id,
+      action: approved ? 'approve' : 'reject',
+    });
+    const { data: stepsRows } = await supabase
+      .from('approval_workflows')
+      .select('*')
+      .eq('budget_proposal_id', selectedId)
+      .order('step_order', { ascending: true });
+    const list = (stepsRows ?? []) as ApprovalStep[];
+    setStepsByProposal((prev) => ({ ...prev, [selectedId]: list }));
+    if (approved && list.length > 0 && list.every((x) => x.status === 'APPROVED')) {
+      await supabase.from('budget_proposals').update({ status: 'APPROVED', decided_at: new Date().toISOString() }).eq('id', selectedId);
+    }
+    const { data: proposalsAgain } = await supabase.from('budget_proposals').select('*').order('created_at', { ascending: false }).limit(50);
+    setProposals((proposalsAgain ?? []) as BudgetProposal[]);
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="min-h-full">
+      <TopBar title="Budgets" subtitle="Proposals and multi-step approvals" />
+      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
         {profile && (
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-6 mb-10">
-            <h3 className="text-white font-black uppercase tracking-widest text-[10px] mb-4">New proposal</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-3">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">New proposal</p>
+            <div className="grid md:grid-cols-2 gap-3">
               <input
                 value={draftTitle}
                 onChange={(e) => setDraftTitle(e.target.value)}
                 placeholder="Title"
-                className="bg-black/30 border border-white/10 rounded-xl py-2 px-3 text-sm text-white"
+                className="rounded-lg border border-input px-3 py-2 text-sm"
               />
               <div className="flex gap-2">
                 <input
@@ -202,12 +245,12 @@ export default function BudgetPage() {
                   value={draftAmount}
                   onChange={(e) => setDraftAmount(e.target.value)}
                   placeholder="Amount"
-                  className="flex-1 bg-black/30 border border-white/10 rounded-xl py-2 px-3 text-sm text-white"
+                  className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
                 />
                 <select
                   value={draftCurrency}
                   onChange={(e) => setDraftCurrency(e.target.value)}
-                  className="w-28 bg-black/30 border border-white/10 rounded-xl py-2 px-2 text-sm text-white"
+                  className="w-24 rounded-lg border border-input px-2 py-2 text-sm bg-white"
                 >
                   <option value="USD">USD</option>
                   <option value="EUR">EUR</option>
@@ -220,13 +263,13 @@ export default function BudgetPage() {
               onChange={(e) => setDraftDesc(e.target.value)}
               placeholder="Description (optional)"
               rows={2}
-              className="mt-3 w-full bg-black/30 border border-white/10 rounded-xl py-2 px-3 text-sm text-white"
+              className="w-full rounded-lg border border-input px-3 py-2 text-sm resize-none"
             />
             <button
               type="button"
               disabled={submitting || !draftTitle.trim()}
               onClick={() => void createDraft()}
-              className="mt-4 text-xs font-black uppercase tracking-wider px-4 py-2 rounded-xl bg-blue-600 text-white disabled:opacity-40"
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40"
             >
               {submitting ? 'Saving…' : 'Save draft'}
             </button>
@@ -234,82 +277,99 @@ export default function BudgetPage() {
         )}
 
         {loading ? (
-          <div className="text-white/30 text-sm">Syncing budgets...</div>
+          <p className="text-sm text-muted-foreground">Loading…</p>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-1 bg-white/5 border border-white/10 rounded-3xl p-6">
-              <h3 className="text-white font-black uppercase tracking-widest text-[10px] mb-5">Proposals</h3>
+          <div className="grid lg:grid-cols-3 gap-6">
+            <div className="bg-white rounded-2xl border border-border p-4 shadow-sm space-y-3">
+              <h3 className="text-sm font-semibold">Proposals</h3>
               {proposals.length === 0 ? (
-                <div className="text-white/30 text-sm">No proposals found.</div>
+                <p className="text-sm text-muted-foreground">None yet.</p>
               ) : (
-                <div className="space-y-4">
-                  {proposals.map((p) => (
-                    <div key={p.id} className="space-y-2">
+                proposals.map((p) => (
+                  <div key={p.id} className="space-y-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(p.id)}
+                      className={`w-full text-left rounded-xl border p-3 text-sm transition-colors ${
+                        selectedId === p.id ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:bg-muted/40'
+                      }`}
+                    >
+                      <p className="font-semibold">{p.title}</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {p.amount} {p.currency}
+                      </p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">{p.status}</p>
+                    </button>
+                    {p.status === 'DRAFT' && p.auth_user_id === profile?.id && (
                       <button
                         type="button"
-                        onClick={() => setSelectedId(p.id)}
-                        className={
-                          'w-full text-left p-4 rounded-2xl bg-black/20 border ' +
-                          (selectedId === p.id ? 'border-blue-500/40' : 'border-white/10 hover:border-white/20')
-                        }
+                        disabled={submitting}
+                        onClick={() => void submitForApproval(p.id)}
+                        className="w-full text-xs font-semibold py-2 rounded-lg border border-border hover:bg-muted/50 disabled:opacity-40"
                       >
-                        <div className="text-white font-black">{p.title}</div>
-                        <div className="text-white/40 text-sm mt-1">
-                          {p.amount} {p.currency}
-                        </div>
-                        <div className="text-white/30 text-xs uppercase font-black tracking-widest mt-2">{p.status}</div>
+                        Submit for approval
                       </button>
-                      {p.status === 'DRAFT' && p.auth_user_id === profile?.id && (
-                        <button
-                          type="button"
-                          disabled={submitting}
-                          onClick={() => void submitForApproval(p.id)}
-                          className="w-full text-[10px] font-black uppercase tracking-wider py-2 rounded-xl bg-white/10 text-white hover:bg-white/15 disabled:opacity-40"
-                        >
-                          Submit for approval
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                ))
               )}
             </div>
 
-            <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-3xl p-6">
-              <div className="flex items-start justify-between gap-6 mb-6">
-                <div>
-                  <h3 className="text-white font-black uppercase tracking-widest text-[10px]">Approval Steps</h3>
-                  <div className="text-white/40 text-sm mt-2">{selectedId ? 'Workflow decision timeline' : 'Select a proposal'}</div>
-                </div>
-                <div className="text-white/20 text-xs">Role-based reviewers</div>
-              </div>
-
+            <div className="lg:col-span-2 bg-white rounded-2xl border border-border p-5 shadow-sm">
+              <h3 className="text-sm font-semibold mb-1">Approval steps</h3>
+              <p className="text-xs text-muted-foreground mb-4">{selectedId ? 'Review chain for selected proposal' : 'Select a proposal'}</p>
               {selectedId ? (
                 selectedSteps.length === 0 ? (
-                  <div className="text-white/30 text-sm">No workflow steps yet — submit a draft to generate the approval chain.</div>
+                  <p className="text-sm text-muted-foreground">No workflow yet — submit this proposal.</p>
                 ) : (
-                  <div className="space-y-4">
-                    {selectedSteps.map((s) => (
-                      <div key={s.id} className="p-4 rounded-2xl bg-black/20 border border-white/10">
-                        <div className="flex items-start justify-between gap-4">
-                          <div>
-                            <div className="text-white font-black">{s.step_name}</div>
-                            {s.required_role ? (
-                              <div className="text-white/40 text-sm mt-1">Role hint: {s.required_role}</div>
-                            ) : null}
+                  <ul className="space-y-3">
+                    {selectedSteps.map((s, idx) => {
+                      const unlocked = stepUnlocked(idx);
+                      const can = canActOnStep(s) && unlocked;
+                      return (
+                        <li key={s.id} className="rounded-xl border border-border p-4 bg-slate-50/60">
+                          <div className="flex flex-wrap justify-between gap-2">
+                            <div>
+                              <p className="font-medium">{s.step_name}</p>
+                              {s.required_role ? (
+                                <p className="text-xs text-muted-foreground mt-1">Reviewer role: {s.required_role}</p>
+                              ) : null}
+                              {!unlocked && s.status === 'PENDING' ? (
+                                <p className="text-[10px] text-amber-700 mt-2">Waiting on earlier steps.</p>
+                              ) : null}
+                            </div>
+                            <span className="text-[10px] font-bold uppercase text-muted-foreground">{s.status}</span>
                           </div>
-                          <div className="text-white/30 text-xs uppercase font-black tracking-widest">{s.status}</div>
-                        </div>
-                        {s.decision_note ? <div className="text-white/60 text-sm mt-4">{s.decision_note}</div> : null}
-                        {s.decided_at ? (
-                          <div className="text-white/20 text-xs mt-3">Decided: {new Date(s.decided_at).toLocaleString()}</div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
+                          {s.decided_at ? (
+                            <p className="text-[10px] text-muted-foreground mt-2">{new Date(s.decided_at).toLocaleString()}</p>
+                          ) : null}
+                          {can && (
+                            <div className="flex gap-2 mt-3">
+                              <button
+                                type="button"
+                                disabled={submitting}
+                                onClick={() => void decideStep(s, true)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                type="button"
+                                disabled={submitting}
+                                onClick={() => void decideStep(s, false)}
+                                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border disabled:opacity-50"
+                              >
+                                Reject
+                              </button>
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 )
               ) : (
-                <div className="text-white/30 text-sm">Choose a proposal to view its workflow.</div>
+                <p className="text-sm text-muted-foreground">Pick a proposal from the list.</p>
               )}
             </div>
           </div>

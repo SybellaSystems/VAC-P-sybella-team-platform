@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { MobileNav } from '@/components/layout/MobileNav';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -17,7 +18,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
           <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
           <p className="text-sm text-muted-foreground">Loading VAC-P...</p>
@@ -29,10 +30,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen overflow-hidden bg-slate-100 text-foreground">
       <Sidebar />
-      <main className="flex-1 ml-64 overflow-y-auto">
-        {children}
+      <MobileNav />
+      <main className="flex-1 w-full min-w-0 md:ml-64 overflow-y-auto bg-slate-50 pt-14 md:pt-0 min-h-0">
+        <div className="min-h-full bg-slate-50">{children}</div>
       </main>
     </div>
   );

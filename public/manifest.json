@@ -1,0 +1,11 @@
+{
+  "name": "VAC-P | Sybella HQ",
+  "short_name": "VAC-P",
+  "description": "Virtual Accountability & Collaboration — Sybella Systems",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1d4ed8",
+  "orientation": "portrait-primary",
+  "icons": []
+}

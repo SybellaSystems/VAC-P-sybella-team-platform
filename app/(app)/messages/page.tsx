@@ -30,8 +30,17 @@ export default function MessagesPage() {
       loadMessages(activeChannel.id);
       const sub = supabase
         .channel(`messages:${activeChannel.id}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${activeChannel.id}` }, payload => {
-          setMessages(prev => [...prev, payload.new as Message]);
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${activeChannel.id}` }, async (payload) => {
+          const nm = payload.new as Message;
+          let sender: Profile | undefined = members[nm.sender_id];
+          if (!sender) {
+            const { data: p } = await supabase.from('profiles').select('*').eq('id', nm.sender_id).maybeSingle();
+            if (p) {
+              sender = p as Profile;
+              setMembers((prev) => ({ ...prev, [sender!.id]: sender! }));
+            }
+          }
+          setMessages((prev) => [...prev, { ...nm, sender }]);
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         })
         .subscribe();
@@ -118,8 +127,29 @@ export default function MessagesPage() {
       .select('*')
       .eq('channel_id', channelId)
       .order('created_at', { ascending: true })
-      .limit(100);
-    setMessages((data as Message[]) || []);
+      .limit(200);
+    const list = (data as Message[]) || [];
+    const senderIds = Array.from(new Set(list.map((m) => m.sender_id)));
+    let map: Record<string, Profile> = { ...members };
+    if (senderIds.length) {
+      const { data: rows } = await supabase.from('profiles').select('*').in('id', senderIds);
+      (rows as Profile[] | null)?.forEach((p) => {
+        map[p.id] = p;
+      });
+      setMembers((prev) => {
+        const n = { ...prev };
+        (rows as Profile[] | null)?.forEach((p) => {
+          n[p.id] = p;
+        });
+        return n;
+      });
+    }
+    setMessages(
+      list.map((m) => ({
+        ...m,
+        sender: map[m.sender_id],
+      }))
+    );
   };
 
   const sendMessage = async () => {
@@ -180,7 +210,7 @@ export default function MessagesPage() {
   return (
     <div className="flex flex-col h-full">
       <TopBar title="Messages" subtitle="Team Communication" />
-      <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
+      <div className="flex flex-1 overflow-hidden min-h-0 h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-4rem)]">
         {/* Sidebar */}
         <div className="w-64 bg-white border-r border-border flex flex-col flex-shrink-0">
           <div className="p-3 border-b border-border">
@@ -227,7 +257,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-3 sm:px-5 py-4 space-y-4 bg-slate-50">
                 {groupedMessages().map(({ date, messages: dayMsgs }) => (
                   <div key={date}>
                     <div className="flex items-center gap-3 my-3">
@@ -237,25 +267,32 @@ export default function MessagesPage() {
                     </div>
                     <div className="space-y-3">
                       {dayMsgs.map((msg, i) => {
-                        const sender = members[msg.sender_id];
+                        const sender = msg.sender || members[msg.sender_id];
                         const isOwn = msg.sender_id === profile?.id;
+                        const displayName = isOwn ? 'You' : sender?.full_name?.trim() || 'Team member';
+                        const roleLabel = !isOwn && sender?.role ? sender.role.replace('_', ' ') : '';
                         const prevMsg = i > 0 ? dayMsgs[i - 1] : null;
                         const showHeader = !prevMsg || prevMsg.sender_id !== msg.sender_id;
 
                         return (
                           <div key={msg.id} className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : ''}`}>
                             {showHeader && !isOwn && (
-                              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 ring-2 ring-white shadow-sm">
                                 <span className="text-white text-xs font-bold">
-                                  {sender?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                                  {sender?.full_name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2) || '?'}
                                 </span>
                               </div>
                             )}
-                            {!showHeader && !isOwn && <div className="w-8 flex-shrink-0" />}
-                            <div className={`max-w-md ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
+                            {!showHeader && !isOwn && <div className="w-9 flex-shrink-0" />}
+                            <div className={`max-w-[min(100%,28rem)] ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
                               {showHeader && (
-                                <div className={`flex items-baseline gap-2 mb-0.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                                  <span className="text-xs font-semibold text-foreground">{isOwn ? 'You' : (sender?.full_name || 'Unknown')}</span>
+                                <div className={`flex flex-wrap items-baseline gap-x-2 gap-y-0 mb-0.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
+                                  <span className="text-xs font-semibold text-foreground">{displayName}</span>
+                                  {roleLabel ? (
+                                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground bg-white px-1.5 py-0.5 rounded border border-border">
+                                      {roleLabel}
+                                    </span>
+                                  ) : null}
                                   <span className="text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
                                 </div>
                               )}

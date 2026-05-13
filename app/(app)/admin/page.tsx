@@ -5,6 +5,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Profile, Role } from '@/lib/database.types';
+import { ALL_ROLES } from '@/lib/rbac';
 import { UserPlus, Shield, Users, Mail, X, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle } from 'lucide-react';
 
 const roleColors: Record<string, string> = {
@@ -17,6 +18,8 @@ const roleColors: Record<string, string> = {
   sales: 'bg-teal-100 text-teal-700',
   hr: 'bg-violet-100 text-violet-700',
   finance: 'bg-cyan-100 text-cyan-700',
+  legal_counsel: 'bg-slate-200 text-slate-800',
+  marketing_manager: 'bg-fuchsia-100 text-fuchsia-800',
 };
 
 const defaultTeam = [
@@ -214,8 +217,10 @@ export default function AdminPage() {
                       disabled={member.id === profile?.id}
                       className="text-xs border border-input rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
                     >
-                      {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
-                        <option key={r} value={r}>{r}</option>
+                      {ALL_ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {r.replace(/_/g, ' ')}
+                        </option>
                       ))}
                     </select>
                   </td>
@@ -292,8 +297,10 @@ export default function AdminPage() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Role *</label>
                 <select value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
-                    <option key={r} value={r}>{r}</option>
+                  {ALL_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {r.replace(/_/g, ' ')}
+                    </option>
                   ))}
                 </select>
               </div>

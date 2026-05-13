@@ -1,4 +1,15 @@
-export type Role = 'admin' | 'director' | 'manager' | 'developer' | 'designer' | 'qa' | 'sales' | 'hr' | 'finance';
+export type Role =
+  | 'admin'
+  | 'director'
+  | 'manager'
+  | 'developer'
+  | 'designer'
+  | 'qa'
+  | 'sales'
+  | 'hr'
+  | 'finance'
+  | 'legal_counsel'
+  | 'marketing_manager';
 
 export type Profile = {
   id: string;
@@ -88,6 +99,69 @@ export type ProjectFeatureLink = {
   feature_type: ProjectFeatureLinkType;
   feature_id: string;
   note: string;
+  created_by: string | null;
+  created_at: string;
+};
+
+export type ShareAllocation = {
+  id: string;
+  share_id: string;
+  allocation_type: 'internal' | 'external';
+  profile_id: string | null;
+  external_party_name: string | null;
+  external_party_email: string | null;
+  units: number;
+  share_value: number | null;
+  notes: string;
+  allocated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrCandidate = {
+  id: string;
+  full_name: string;
+  email: string;
+  phone: string;
+  role_applied: string;
+  stage: 'applied' | 'screening' | 'interview' | 'offer' | 'hired' | 'rejected';
+  notes: string;
+  assigned_hr: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrPerformanceReview = {
+  id: string;
+  member_id: string;
+  reviewer_id: string | null;
+  period_label: string;
+  summary: string;
+  goals: string;
+  status: 'draft' | 'submitted' | 'acknowledged';
+  created_at: string;
+  updated_at: string;
+};
+
+export type HrOnboardingTask = {
+  id: string;
+  member_id: string;
+  title: string;
+  description: string;
+  is_done: boolean;
+  due_date: string | null;
+  assigned_to: string | null;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectBudgetLink = {
+  id: string;
+  project_id: string;
+  budget_proposal_id: string;
+  link_role: string;
   created_by: string | null;
   created_at: string;
 };
