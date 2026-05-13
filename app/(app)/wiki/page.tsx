@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/lib/supabase';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 type WikiPage = {
   id: string;
@@ -14,6 +14,7 @@ type WikiPage = {
 };
 
 export default function WikiPageRoute() {
+  useDocumentTitle('Wiki | VAC-P');
   const [q, setQ] = useState('');
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,10 +54,6 @@ export default function WikiPageRoute() {
 
   return (
     <div className="bg-[#050505] min-h-screen pt-28 pb-20 px-6">
-      <Helmet>
-        <title>Wiki | VAC-P</title>
-      </Helmet>
-
       <div className="mx-auto max-w-7xl">
         <header className="mb-10">
           <h1 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.4em] mb-6">Wiki / Knowledge Base</h1>

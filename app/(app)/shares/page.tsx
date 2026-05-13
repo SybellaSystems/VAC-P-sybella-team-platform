@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/lib/supabase';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useAuth } from '@/contexts/AuthContext';
 
 type Share = {
@@ -26,6 +26,7 @@ type Ownership = {
 };
 
 export default function SharesPage() {
+  useDocumentTitle('Shares & Ownership | VAC-P');
   const { profile } = useAuth();
   const [shares, setShares] = useState<Share[]>([]);
   const [ownership, setOwnership] = useState<Ownership[]>([]);
@@ -70,10 +71,6 @@ export default function SharesPage() {
 
   return (
     <div className="bg-[#050505] min-h-screen pt-28 pb-20 px-6">
-      <Helmet>
-        <title>Shares & Ownership | VAC-P</title>
-      </Helmet>
-
       <div className="mx-auto max-w-7xl">
         <header className="mb-10">
           <h1 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.4em] mb-6">Shares & Ownership</h1>

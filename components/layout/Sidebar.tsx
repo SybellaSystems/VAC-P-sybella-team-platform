@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Role } from '@/lib/database.types';
-import { LayoutDashboard, Users, FolderKanban, MessageSquare, ChartBar as BarChart3, DollarSign, ClipboardList, UserCheck, Building2, LogOut, ChevronRight, Shield } from 'lucide-react';
+import { LayoutDashboard, Users, FolderKanban, MessageSquare, ChartBar as BarChart3, DollarSign, ClipboardList, Building2, LogOut, ChevronRight, Shield, ScrollText } from 'lucide-react';
 
 const allNavItems = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
@@ -22,6 +22,7 @@ const allNavItems = [
   { href: '/repo-links', label: 'Repo Links', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
   { href: '/leave', label: 'Leave', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
   { href: '/budget', label: 'Budget', icon: ClipboardList, roles: ['admin','director','manager','developer','designer','qa','sales','hr','finance'] as Role[] },
+  { href: '/audit-logs', label: 'Audit Logs', icon: ScrollText, roles: ['admin', 'director'] as Role[] },
 ];
 
 
@@ -46,7 +47,7 @@ export function Sidebar() {
   );
 
   const initials = profile?.full_name
-    ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+    ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??';
 
   return (
@@ -93,7 +94,7 @@ export function Sidebar() {
           <div className="flex-1 min-w-0">
             <p className="text-white text-xs font-semibold truncate">{profile?.full_name || 'Loading...'}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
-              <div className={cn('w-1.5 h-1.5 rounded-full', profile?.role ? roleColors[profile.role] : 'bg-gray-500')} />
+              <div className={cn('w-1.5 h-1.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-gray-500')} />
               <p className="text-xs capitalize" style={{ color: 'hsl(215, 15%, 55%)' }}>{profile?.role || ''}</p>
             </div>
           </div>

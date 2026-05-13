@@ -53,7 +53,7 @@ export type Task = {
   project_id: string | null;
   title: string;
   description: string;
-  status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked';
+  status: 'todo' | 'started' | 'in_progress' | 'review' | 'done' | 'blocked' | 'cancelled';
   priority: 'low' | 'medium' | 'high' | 'critical';
   assigned_to: string | null;
   due_date: string | null;
@@ -61,6 +61,35 @@ export type Task = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TaskSubtask = {
+  id: string;
+  task_id: string;
+  title: string;
+  status: 'todo' | 'in_progress' | 'review' | 'done' | 'blocked' | 'cancelled';
+  sort_order: number;
+  assigned_to: string | null;
+  due_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectFeatureLinkType =
+  | 'customer'
+  | 'financial_record'
+  | 'budget_proposal'
+  | 'wiki_page'
+  | 'repo_link';
+
+export type ProjectFeatureLink = {
+  id: string;
+  project_id: string;
+  feature_type: ProjectFeatureLinkType;
+  feature_id: string;
+  note: string;
+  created_by: string | null;
+  created_at: string;
 };
 
 export type Channel = {

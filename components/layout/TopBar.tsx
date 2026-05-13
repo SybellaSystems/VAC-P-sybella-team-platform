@@ -64,7 +64,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           </div>
           <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
             <span className="text-white text-xs font-bold">
-              {profile?.full_name?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
+              {profile?.full_name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || '?'}
             </span>
           </div>
         </div>

@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Helmet } from 'react-helmet-async';
 import { supabase } from '@/lib/supabase';
+import { useDocumentTitle } from '@/hooks/use-document-title';
 
 type RepoLink = {
   id: string;
@@ -13,6 +13,7 @@ type RepoLink = {
 };
 
 export default function RepoLinksPage() {
+  useDocumentTitle('Repo Links | VAC-P');
   const [links, setLinks] = useState<RepoLink[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -40,10 +41,6 @@ export default function RepoLinksPage() {
 
   return (
     <div className="bg-[#050505] min-h-screen pt-28 pb-20 px-6">
-      <Helmet>
-        <title>Repo Links | VAC-P</title>
-      </Helmet>
-
       <div className="mx-auto max-w-7xl">
         <header className="mb-10">
           <h1 className="text-[10px] font-black text-blue-500 uppercase tracking-[0.4em] mb-6">Repo / Document Links</h1>

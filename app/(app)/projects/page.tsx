@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Project, Profile } from '@/lib/database.types';
-import { Plus, Search, Filter, Calendar, DollarSign, Users, ChevronRight, Kanban, List, MoveHorizontal as MoreHorizontal, X } from 'lucide-react';
+import type { Project, Profile, ProjectFeatureLink, ProjectFeatureLinkType, TaskSubtask } from '@/lib/database.types';
+import { logAudit } from '@/lib/audit';
+import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2 } from 'lucide-react';
+import { parseISO } from 'date-fns';
 
 const statusColors: Record<string, string> = {
   planning: 'bg-blue-100 text-blue-700',
@@ -40,6 +42,17 @@ export default function ProjectsPage() {
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
+  const [subtasksByTaskId, setSubtasksByTaskId] = useState<Record<string, TaskSubtask[]>>({});
+  const [featureLinks, setFeatureLinks] = useState<ProjectFeatureLink[]>([]);
+  const [linkLabels, setLinkLabels] = useState<Record<string, string>>({});
+  const [linkPickType, setLinkPickType] = useState<ProjectFeatureLinkType>('customer');
+  const [linkPickId, setLinkPickId] = useState('');
+  const [pickCustomers, setPickCustomers] = useState<{ id: string; name: string }[]>([]);
+  const [pickBudgets, setPickBudgets] = useState<{ id: string; title: string }[]>([]);
+  const [pickWiki, setPickWiki] = useState<{ id: string; title: string }[]>([]);
+  const [pickRepos, setPickRepos] = useState<{ id: string; title: string }[]>([]);
+  const [pickFinance, setPickFinance] = useState<{ id: string; title: string }[]>([]);
+  const [subtaskDraft, setSubtaskDraft] = useState<Record<string, string>>({});
 
   const canManage = ['admin','director','manager'].includes(profile?.role || '');
 
@@ -56,7 +69,175 @@ export default function ProjectsPage() {
 
   const loadTasks = async (projectId: string) => {
     const { data } = await supabase.from('tasks').select('*, profiles(full_name)').eq('project_id', projectId).order('created_at', { ascending: false });
-    setTasks(data || []);
+    const list = data || [];
+    setTasks(list);
+    const ids = list.map((t: { id: string }) => t.id);
+    if (ids.length === 0) {
+      setSubtasksByTaskId({});
+      return;
+    }
+    const { data: subs } = await supabase.from('task_subtasks').select('*').in('task_id', ids);
+    const map: Record<string, TaskSubtask[]> = {};
+    (subs as TaskSubtask[] | null)?.forEach((s) => {
+      if (!map[s.task_id]) map[s.task_id] = [];
+      map[s.task_id].push(s);
+    });
+    Object.keys(map).forEach((k) => {
+      map[k].sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+    });
+    setSubtasksByTaskId(map);
+  };
+
+  const loadFeatureLinks = async (projectId: string) => {
+    const { data } = await supabase.from('project_feature_links').select('*').eq('project_id', projectId);
+    const links = (data as ProjectFeatureLink[]) || [];
+    setFeatureLinks(links);
+    const labels: Record<string, string> = {};
+    const buckets: Record<ProjectFeatureLinkType, string[]> = {
+      customer: [],
+      financial_record: [],
+      budget_proposal: [],
+      wiki_page: [],
+      repo_link: [],
+    };
+    links.forEach((l) => buckets[l.feature_type].push(l.feature_id));
+    const uniq = (xs: string[]) => Array.from(new Set(xs));
+    if (buckets.customer.length) {
+      const { data: rows } = await supabase.from('customers').select('id,name').in('id', uniq(buckets.customer));
+      rows?.forEach((r: { id: string; name: string }) => {
+        labels[`customer:${r.id}`] = r.name;
+      });
+    }
+    if (buckets.financial_record.length) {
+      const { data: rows } = await supabase.from('financial_records').select('id,title').in('id', uniq(buckets.financial_record));
+      rows?.forEach((r: { id: string; title: string }) => {
+        labels[`financial_record:${r.id}`] = r.title;
+      });
+    }
+    if (buckets.budget_proposal.length) {
+      const { data: rows } = await supabase.from('budget_proposals').select('id,title').in('id', uniq(buckets.budget_proposal));
+      rows?.forEach((r: { id: string; title: string }) => {
+        labels[`budget_proposal:${r.id}`] = r.title;
+      });
+    }
+    if (buckets.wiki_page.length) {
+      const { data: rows } = await supabase.from('wiki_pages').select('id,title').in('id', uniq(buckets.wiki_page));
+      rows?.forEach((r: { id: string; title: string }) => {
+        labels[`wiki_page:${r.id}`] = r.title;
+      });
+    }
+    if (buckets.repo_link.length) {
+      const { data: rows } = await supabase.from('repo_links').select('id,title').in('id', uniq(buckets.repo_link));
+      rows?.forEach((r: { id: string; title: string }) => {
+        labels[`repo_link:${r.id}`] = r.title;
+      });
+    }
+    setLinkLabels(labels);
+  };
+
+  useEffect(() => {
+    if (!selectedProject) {
+      setFeatureLinks([]);
+      setLinkLabels({});
+      return;
+    }
+    loadFeatureLinks(selectedProject.id);
+  }, [selectedProject?.id]);
+
+  useEffect(() => {
+    if (!selectedProject || !canManage) return;
+    let cancelled = false;
+    (async () => {
+      const [cust, bp, wiki, repo, fin] = await Promise.all([
+        supabase.from('customers').select('id,name').order('name'),
+        supabase.from('budget_proposals').select('id,title').order('created_at', { ascending: false }).limit(80),
+        supabase.from('wiki_pages').select('id,title').order('title').limit(80),
+        supabase.from('repo_links').select('id,title').order('title').limit(80),
+        supabase.from('financial_records').select('id,title').order('created_at', { ascending: false }).limit(80),
+      ]);
+      if (cancelled) return;
+      setPickCustomers((cust.data as { id: string; name: string }[]) || []);
+      setPickBudgets((bp.data as { id: string; title: string }[]) || []);
+      setPickWiki((wiki.data as { id: string; title: string }[]) || []);
+      setPickRepos((repo.data as { id: string; title: string }[]) || []);
+      setPickFinance((fin.data as { id: string; title: string }[]) || []);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProject?.id, canManage]);
+
+  const timelineRange = () => {
+    const timelineTasks = tasks.filter((t: any) => t.created_at);
+    if (timelineTasks.length === 0) return null;
+    const times = timelineTasks.flatMap((t: any) => {
+      const start = t.created_at ? parseISO(t.created_at).getTime() : Date.now();
+      const end = t.due_date ? parseISO(t.due_date).getTime() : start + 86400000;
+      return [start, end];
+    });
+    const tMin = Math.min(...times);
+    const tMax = Math.max(...times);
+    const span = Math.max(tMax - tMin, 86400000);
+    return { tMin, span };
+  };
+
+  const addFeatureLink = async () => {
+    if (!selectedProject?.id || !linkPickId.trim()) return;
+    await supabase.from('project_feature_links').insert({
+      project_id: selectedProject.id,
+      feature_type: linkPickType,
+      feature_id: linkPickId.trim(),
+      created_by: profile?.id ?? null,
+    });
+    await loadFeatureLinks(selectedProject.id);
+    await logAudit({
+      event_type: 'project.feature_link',
+      entity_type: 'project',
+      entity_id: selectedProject.id,
+      action: 'create',
+      details: `${linkPickType}:${linkPickId}`,
+    });
+    setLinkPickId('');
+  };
+
+  const addSubtaskForTask = async (taskId: string) => {
+    const title = (subtaskDraft[taskId] || '').trim();
+    if (!title || !selectedProject) return;
+    const ord = (subtasksByTaskId[taskId]?.length ?? 0);
+    await supabase.from('task_subtasks').insert({
+      task_id: taskId,
+      title,
+      sort_order: ord,
+      status: 'todo',
+    });
+    setSubtaskDraft((prev) => ({ ...prev, [taskId]: '' }));
+    await loadTasks(selectedProject.id);
+    await logAudit({
+      event_type: 'task.subtask_created',
+      entity_type: 'task',
+      entity_id: taskId,
+      action: 'create',
+      details: title,
+    });
+  };
+
+  type PickRow = { id: string; name?: string; title?: string };
+
+  const linkPickOptions = (): PickRow[] => {
+    switch (linkPickType) {
+      case 'customer':
+        return pickCustomers;
+      case 'budget_proposal':
+        return pickBudgets;
+      case 'wiki_page':
+        return pickWiki;
+      case 'repo_link':
+        return pickRepos;
+      case 'financial_record':
+        return pickFinance;
+      default:
+        return [];
+    }
   };
 
   const handleCreateProject = async () => {
@@ -357,6 +538,95 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
+              {timelineRange() && (
+                <div>
+                  <p className="text-sm font-semibold text-foreground mb-1">Timeline</p>
+                  <p className="text-xs text-muted-foreground mb-3">Gantt-style bars from task start → due date.</p>
+                  <div className="space-y-3">
+                    {tasks
+                      .filter((t: any) => t.created_at)
+                      .map((task: any) => {
+                        const r = timelineRange()!;
+                        const startMs = parseISO(task.created_at).getTime();
+                        const endMs = task.due_date ? parseISO(task.due_date).getTime() : startMs + 86400000;
+                        const left = ((startMs - r.tMin) / r.span) * 100;
+                        const width = Math.max(((endMs - startMs) / r.span) * 100, 1.5);
+                        return (
+                          <div key={task.id}>
+                            <div className="flex justify-between text-[10px] text-muted-foreground mb-1 gap-2">
+                              <span className="truncate flex-1">{task.title}</span>
+                              <span className="flex-shrink-0">{task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}</span>
+                            </div>
+                            <div className="relative h-5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="absolute top-1 bottom-1 bg-primary/90 rounded-full min-w-[6px]"
+                                style={{ left: `${Math.min(Math.max(left, 0), 98)}%`, width: `${Math.min(width, 100 - left)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Link2 size={14} className="text-muted-foreground" />
+                  <p className="text-sm font-semibold text-foreground">Linked records</p>
+                </div>
+                {canManage && (
+                  <div className="flex flex-wrap gap-2 mb-3 items-center">
+                    <select
+                      value={linkPickType}
+                      onChange={(e) => {
+                        setLinkPickType(e.target.value as ProjectFeatureLinkType);
+                        setLinkPickId('');
+                      }}
+                      className="text-xs border border-input rounded-lg px-2 py-1.5 bg-white"
+                    >
+                      <option value="customer">Customer</option>
+                      <option value="financial_record">Finance record</option>
+                      <option value="budget_proposal">Budget proposal</option>
+                      <option value="wiki_page">Wiki page</option>
+                      <option value="repo_link">Repo link</option>
+                    </select>
+                    <select
+                      value={linkPickId}
+                      onChange={(e) => setLinkPickId(e.target.value)}
+                      className="flex-1 min-w-[140px] text-xs border border-input rounded-lg px-2 py-1.5 bg-white"
+                    >
+                      <option value="">Select…</option>
+                      {linkPickOptions().map((opt) => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.name ?? opt.title ?? opt.id}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void addFeatureLink()}
+                      disabled={!linkPickId}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground disabled:opacity-50"
+                    >
+                      Link
+                    </button>
+                  </div>
+                )}
+                {featureLinks.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mb-2">No cross-links yet.</p>
+                ) : (
+                  <ul className="space-y-1.5 mb-2">
+                    {featureLinks.map((l) => (
+                      <li key={l.id} className="text-xs text-foreground flex justify-between gap-2">
+                        <span className="uppercase text-muted-foreground whitespace-nowrap">{l.feature_type.replace('_', ' ')}</span>
+                        <span className="truncate text-right">{linkLabels[`${l.feature_type}:${l.feature_id}`] ?? l.feature_id}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
               {canManage && (
                 <div>
                   <p className="text-xs font-semibold text-muted-foreground mb-2">Update Status</p>
@@ -379,14 +649,67 @@ export default function ProjectsPage() {
                 {tasks.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No tasks yet</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     {tasks.map((task: any) => (
-                      <div key={task.id} className="flex items-center gap-3 py-2 px-3 bg-muted/30 rounded-lg">
-                        <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'blocked' ? 'bg-red-500' : 'bg-blue-500'}`} />
-                        <span className="text-sm text-foreground flex-1 truncate">{task.title}</span>
-                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${task.status === 'done' ? 'bg-emerald-100 text-emerald-700' : task.status === 'blocked' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
-                          {task.status.replace('_',' ')}
-                        </span>
+                      <div key={task.id} className="rounded-lg border border-border bg-muted/20 overflow-hidden">
+                        <div className="flex items-center gap-3 py-2 px-3 bg-muted/30">
+                          <div
+                            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                              task.status === 'done'
+                                ? 'bg-emerald-500'
+                                : task.status === 'blocked' || task.status === 'cancelled'
+                                  ? 'bg-red-500'
+                                  : 'bg-blue-500'
+                            }`}
+                          />
+                          <span className="text-sm text-foreground flex-1 truncate">{task.title}</span>
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                              task.status === 'done'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : task.status === 'blocked' || task.status === 'cancelled'
+                                  ? 'bg-red-100 text-red-700'
+                                  : 'bg-blue-100 text-blue-700'
+                            }`}
+                          >
+                            {task.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        {(subtasksByTaskId[task.id]?.length ?? 0) > 0 && (
+                          <ul className="px-3 pb-2 pt-1 space-y-1 border-t border-border/60 bg-white/50">
+                            {(subtasksByTaskId[task.id] ?? []).map((st) => (
+                              <li key={st.id} className="text-[11px] text-muted-foreground flex justify-between gap-2">
+                                <span className="truncate">{st.title}</span>
+                                <span className="flex-shrink-0 uppercase">{st.status.replace('_', ' ')}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        {canManage && (
+                          <div className="px-3 py-2 flex gap-2 border-t border-border/60 bg-white/80">
+                            <input
+                              value={subtaskDraft[task.id] ?? ''}
+                              onChange={(e) =>
+                                setSubtaskDraft((prev) => ({ ...prev, [task.id]: e.target.value }))
+                              }
+                              placeholder="New subtask…"
+                              className="flex-1 text-xs px-2 py-1 rounded border border-input bg-white"
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  void addSubtaskForTask(task.id);
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void addSubtaskForTask(task.id)}
+                              className="text-xs font-semibold px-2 py-1 rounded bg-primary text-primary-foreground"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

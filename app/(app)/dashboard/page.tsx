@@ -192,7 +192,7 @@ export default function DashboardPage() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(215,20%,92%)" />
                 <XAxis dataKey="month" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
-                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={v => `$${v/1000}K`} />
+                <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v: number) => `$${v / 1000}K`} />
                 <Tooltip formatter={(v: number) => [`$${v.toLocaleString()}`, '']} />
                 <Area type="monotone" dataKey="revenue" stroke="hsl(213,88%,40%)" fill="url(#revenue)" strokeWidth={2} />
                 <Area type="monotone" dataKey="expenses" stroke="hsl(158,60%,40%)" fill="url(#expenses)" strokeWidth={2} />

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Channel, Message, Profile } from '@/lib/database.types';
 import { Send, Hash, Plus, Search, TriangleAlert as AlertTriangle, X } from 'lucide-react';
+import { logAudit } from '@/lib/audit';
 
 export default function MessagesPage() {
   const { profile } = useAuth();
@@ -56,6 +57,61 @@ export default function MessagesPage() {
     setMembers(map);
   };
 
+  const resolveAssigneeFromToken = (token: string, list: Profile[]): string | null => {
+    const raw = token.replace(/^@/, '').trim().toLowerCase();
+    if (!raw) return null;
+    const strip = (s: string) => s.toLowerCase().replace(/\s+/g, '');
+    const hit = list.find((p) => {
+      const emailLocal = (p.email || '').split('@')[0]?.toLowerCase();
+      return (
+        emailLocal === raw ||
+        strip(p.full_name || '') === strip(raw) ||
+        (p.full_name || '').toLowerCase().includes(raw)
+      );
+    });
+    return hit?.id ?? null;
+  };
+
+  const createTasksFromMessageContent = async (content: string, channelName: string) => {
+    if (!profile) return;
+    const team = Object.values(members);
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      const arrow = trimmed.match(/^(?:->|→)\s*(.+)$/);
+      if (!arrow) continue;
+      let rest = arrow[1].trim();
+      let assignee: string | null = null;
+      const mentionMatch = rest.match(/@([\w.-]+)/);
+      if (mentionMatch) {
+        assignee = resolveAssigneeFromToken(mentionMatch[0], team);
+        rest = rest.replace(/@[\w.-]+/, '').trim();
+      }
+      if (!rest) continue;
+      const { data: created, error } = await supabase
+        .from('tasks')
+        .insert({
+          title: rest.slice(0, 500),
+          description: `Created from message in #${channelName}`,
+          assigned_to: assignee,
+          created_by: profile.id,
+          status: 'todo',
+          project_id: null,
+        })
+        .select('id')
+        .maybeSingle();
+      if (!error && created?.id) {
+        await logAudit({
+          event_type: 'task.created_from_message',
+          entity_type: 'task',
+          entity_id: created.id,
+          action: 'insert',
+          details: trimmed.slice(0, 240),
+        });
+      }
+    }
+  };
+
   const loadMessages = async (channelId: string) => {
     const { data } = await supabase
       .from('messages')
@@ -69,12 +125,14 @@ export default function MessagesPage() {
   const sendMessage = async () => {
     if (!input.trim() || !activeChannel || !profile) return;
     setSending(true);
+    const body = input.trim();
     await supabase.from('messages').insert({
       channel_id: activeChannel.id,
       sender_id: profile.id,
-      content: input.trim(),
+      content: body,
       message_type: msgType,
     });
+    await createTasksFromMessageContent(body, activeChannel.name);
     setInput('');
     setMsgType('text');
     setSending(false);
@@ -279,7 +337,10 @@ export default function MessagesPage() {
                     <Send size={16} />
                   </button>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-1.5">Press Enter to send, Shift+Enter for new line</p>
+                <p className="text-[10px] text-muted-foreground mt-1.5">
+                  Press Enter to send, Shift+Enter for new line. Start a line with <kbd className="px-1 rounded bg-muted">-&gt;</kbd> or{' '}
+                  <kbd className="px-1 rounded bg-muted">→</kbd> to create a task; add <kbd className="px-1 rounded bg-muted">@name</kbd> to assign.
+                </p>
               </div>
             </>
           ) : (
