@@ -33,53 +33,10 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex" style={{ background: 'hsl(215, 25%, 96%)' }}>
-      {/* Left panel */}
-      <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-12" style={{ background: 'hsl(220, 25%, 11%)' }}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
-            <span className="text-white font-bold text-base">SS</span>
-          </div>
-          <div>
-            <p className="text-white font-bold text-base">Sybella Systems Ltd</p>
-            <p className="text-blue-400 text-xs">Kigali, Rwanda</p>
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-8">
-            <div className="w-16 h-1.5 bg-blue-600 rounded-full mb-6" />
-            <h2 className="text-4xl font-bold text-white leading-tight mb-4">
-              VAC-P<br />
-              <span className="text-blue-400">Platform</span>
-            </h2>
-            <p className="text-gray-400 text-lg leading-relaxed">
-              Virtual Accountability & Collaboration Platform for the Sybella Systems team.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            {[
-              { label: 'Team Members', value: '9' },
-              { label: 'Active Projects', value: '12+' },
-              { label: 'Departments', value: '6' },
-              { label: 'Uptime', value: '99.9%' },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-xl p-4" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <p className="text-2xl font-bold text-white">{value}</p>
-                <p className="text-sm text-gray-400 mt-1">{label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <p className="text-gray-600 text-sm">
-          &copy; {new Date().getFullYear()} Sybella Systems Ltd. All rights reserved.
-        </p>
-      </div>
-
-      {/* Right panel */}
-      <div className="flex-1 flex items-center justify-center p-8">
-        <div className="w-full max-w-md">
+     
+      {/* Centered panel */}
+      <div className="w-full flex items-center justify-center p-8">
+        <div className="w-full max-w-md mx-auto">
           <div className="bg-white rounded-2xl shadow-sm border border-border p-8">
             <div className="mb-8">
               <div className="flex items-center gap-2 mb-6 lg:hidden">
