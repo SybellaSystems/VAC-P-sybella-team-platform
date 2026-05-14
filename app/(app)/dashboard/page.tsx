@@ -19,19 +19,16 @@ interface Stats {
   projectsByStatus: Record<string, number>;
 }
 
-const revenueData = [
-  { month: 'Jan', revenue: 42000, expenses: 28000 },
-  { month: 'Feb', revenue: 48000, expenses: 31000 },
-  { month: 'Mar', revenue: 44000, expenses: 29000 },
-  { month: 'Apr', revenue: 55000, expenses: 33000 },
-  { month: 'May', revenue: 61000, expenses: 35000 },
-  { month: 'Jun', revenue: 58000, expenses: 34000 },
-];
+interface RevenueChartData {
+  month: string;
+  revenue: number;
+  expenses: number;
+}
 
 const COLORS = ['hsl(213,88%,40%)', 'hsl(158,60%,40%)', 'hsl(35,82%,50%)', 'hsl(0,72%,51%)','hsl(215,15%,60%)'];
 
 export default function DashboardPage() {
-  const { profile } = useAuth();
+  useAuth();
   const [stats, setStats] = useState<Stats>({
     totalTeam: 0, activeProjects: 0, totalCustomers: 0, monthlyRevenue: 0,
     tasksCompleted: 0, tasksPending: 0, tasksBlocked: 0, projectsByStatus: {},
@@ -39,6 +36,7 @@ export default function DashboardPage() {
   const [recentProjects, setRecentProjects] = useState<Project[]>([]);
   const [recentTasks, setRecentTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [revenueData, setRevenueData] = useState<RevenueChartData[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -53,7 +51,9 @@ export default function DashboardPage() {
         supabase.from('projects').select('*').order('created_at', { ascending: false }),
         supabase.from('customers').select('id', { count: 'exact' }).eq('status', 'active'),
         supabase.from('tasks').select('*').order('created_at', { ascending: false }).limit(8),
-        supabase.from('financial_records').select('amount,type').eq('type', 'income'),
+        supabase
+          .from('financial_records')
+          .select('amount,type,created_at'),
       ]);
 
       const projectsByStatus: Record<string, number> = {};
@@ -62,6 +62,48 @@ export default function DashboardPage() {
       });
 
       const revenue = finance?.reduce((sum, r) => sum + (r.amount || 0), 0) ?? 0;
+
+      const monthlyMap: Record<string, { revenue: number; expenses: number }> = {};
+
+      finance?.forEach((record: any) => {
+        if (!record.created_at) return;
+
+        const date = new Date(record.created_at);
+
+        const month = date.toLocaleString('default', {
+          month: 'short',
+        });
+
+        if (!monthlyMap[month]) {
+          monthlyMap[month] = {
+            revenue: 0,
+            expenses: 0,
+          };
+        }
+
+        if (record.type === 'income') {
+          monthlyMap[month].revenue += Number(record.amount || 0);
+        }
+
+        if (record.type === 'expense') {
+          monthlyMap[month].expenses += Number(record.amount || 0);
+        }
+      });
+
+      const monthOrder = [
+        'Jan','Feb','Mar','Apr','May','Jun',
+        'Jul','Aug','Sep','Oct','Nov','Dec'
+      ];
+
+      const formattedRevenueData = Object.entries(monthlyMap).map(([month, values]) => ({
+        month,
+        revenue: values.revenue,
+        expenses: values.expenses,
+      })).sort(
+        (a, b) => monthOrder.indexOf(a.month) - monthOrder.indexOf(b.month)
+      );
+
+      setRevenueData(formattedRevenueData);
 
       setStats({
         totalTeam: teamCount ?? 0,
@@ -77,7 +119,27 @@ export default function DashboardPage() {
       setRecentTasks((tasks || []).slice(0, 6) as Task[]);
       setLoading(false);
     }
+
     load();
+
+    const channel = supabase
+      .channel('financial-live')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'financial_records',
+        },
+        () => {
+          load();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const statusColor = (s: string) => {
@@ -301,15 +363,15 @@ export default function DashboardPage() {
               </div>
               <div>
                 <p className="font-bold text-foreground text-sm">Sybella Systems Ltd</p>
-                <p className="text-xs text-muted-foreground">Software Company · Kigali, Rwanda</p>
+                <p className="text-xs text-muted-foreground">Software Company · Rulindo, Rwanda</p>
               </div>
             </div>
             <div className="h-8 w-px bg-border hidden sm:block" />
             <div className="flex flex-wrap gap-6 text-sm">
               {[
-                { label: 'Founded', value: '2020' },
+                { label: 'Founded', value: '2025' },
                 { label: 'Industry', value: 'Software & Technology' },
-                { label: 'Location', value: 'Kigali, Rwanda' },
+                { label: 'Location', value: 'Rulindo, Rwanda' },
                 { label: 'Team Size', value: '9 Members' },
               ].map(({ label, value }) => (
                 <div key={label}>
