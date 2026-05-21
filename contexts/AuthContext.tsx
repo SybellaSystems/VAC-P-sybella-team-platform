@@ -23,6 +23,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signIn: async () => ({ error: null }),
+  signInWithProvider: async () => {},
+  sendPasswordResetEmail: async () => ({ error: null }),
   signOut: async () => {},
   refreshProfile: async () => {},
 });

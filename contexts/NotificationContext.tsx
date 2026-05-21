@@ -57,7 +57,7 @@ const PREFERENCE_STORAGE_KEY = 'vacp-notification-preferences';
 
 export function NotificationProvider({ children }: { children: React.ReactNode }) {
   const { profile } = useAuth();
-  const toast = useToast();
+  const { toast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -218,7 +218,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
   }, [profile?.id, notificationsOpen, preferences.browser, preferences.dnd, toast]);
 
   const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.is_read),
+    () => notifications?.filter((notification) => !notification.is_read) ?? [],
     [notifications]
   );
 

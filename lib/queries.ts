@@ -1,4 +1,5 @@
 import type { Notification } from '@/lib/database.types';
+import type { PostgrestResponse } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 export type WikiMetadata = {
@@ -76,31 +77,45 @@ export const wikiTemplates: WikiTemplateOption[] = [
   },
 ];
 
-export async function fetchWikiPages() {
-  return supabase.from<WikiPage>('wiki_pages').select('*').order('updated_at', { ascending: false });
+export async function fetchWikiPages(): Promise<PostgrestResponse<WikiPage>> {
+  const response = await supabase.from('wiki_pages').select('*').order('updated_at', { ascending: false });
+  return response as PostgrestResponse<WikiPage>;
 }
 
-export async function fetchFeaturedWikiPages() {
-  return supabase
-    .from<WikiPage>('wiki_pages')
+export async function fetchFeaturedWikiPages(): Promise<PostgrestResponse<WikiPage>> {
+  const response = await supabase
+    .from('wiki_pages')
     .select('*')
     .contains('metadata', { featured: true })
     .eq('is_published', true)
     .order('updated_at', { ascending: false })
     .limit(6);
+  return response as PostgrestResponse<WikiPage>;
 }
 
-export async function searchWikiPages(query: string) {
+export async function searchWikiPages(query: string): Promise<PostgrestResponse<WikiPage>> {
   const normalized = query.trim();
   if (!normalized) return fetchWikiPages();
-  return supabase
-    .from<WikiPage>('wiki_pages')
+  const response = await supabase
+    .from('wiki_pages')
     .select('*')
     .or(
       `title.ilike.%${normalized}%,summary.ilike.%${normalized}%,content.ilike.%${normalized}%`
     )
     .order('updated_at', { ascending: false });
+  return response as PostgrestResponse<WikiPage>;
 }
+
+type WikiPageInsertPayload = {
+  slug: string;
+  title: string;
+  summary?: string | null;
+  content: string;
+  is_published: boolean;
+  published_at: string | null;
+  created_by_auth_user_id: string;
+  metadata: WikiMetadata;
+};
 
 export async function createWikiPage(payload: {
   slug: string;
@@ -110,17 +125,24 @@ export async function createWikiPage(payload: {
   is_published: boolean;
   created_by_auth_user_id: string;
   metadata?: WikiMetadata;
-}): Promise<{ data: WikiPage[] | null; error: unknown }> {
-  return supabase.from<WikiPage>('wiki_pages').insert({
-    slug: payload.slug,
-    title: payload.title,
-    summary: payload.summary,
-    content: payload.content,
-    is_published: payload.is_published,
-    published_at: payload.is_published ? new Date().toISOString() : null,
-    created_by_auth_user_id: payload.created_by_auth_user_id,
-    metadata: payload.metadata || {},
-  });
+}): Promise<PostgrestResponse<WikiPage>> {
+  const response = await supabase
+    .from('wiki_pages')
+    .insert([
+      {
+        slug: payload.slug,
+        title: payload.title,
+        summary: payload.summary,
+        content: payload.content,
+        is_published: payload.is_published,
+        published_at: payload.is_published ? new Date().toISOString() : null,
+        created_by_auth_user_id: payload.created_by_auth_user_id,
+        metadata: payload.metadata || {},
+      },
+    ])
+    .select();
+
+  return response as PostgrestResponse<WikiPage>;
 }
 
 export async function updateWikiPage(id: string, payload: {
@@ -143,36 +165,40 @@ export async function updateWikiPage(id: string, payload: {
   }).eq('id', id);
 }
 
-export async function fetchUnreadNotificationCount(userId: string) {
-  return supabase
-    .from<Notification>('notifications')
+export async function fetchUnreadNotificationCount(userId: string): Promise<PostgrestResponse<Notification>> {
+  const response = await supabase
+    .from('notifications')
     .select('id', { count: 'exact' })
     .eq('user_id', userId)
     .eq('is_read', false);
+  return response as PostgrestResponse<Notification>;
 }
 
-export async function fetchRecentNotifications(userId: string) {
-  return supabase
-    .from<Notification>('notifications')
+export async function fetchRecentNotifications(userId: string): Promise<PostgrestResponse<Notification>> {
+  const response = await supabase
+    .from('notifications')
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(6);
+  return response as PostgrestResponse<Notification>;
 }
 
-export async function markNotificationRead(notificationId: string) {
-  return supabase
-    .from<Notification>('notifications')
+export async function markNotificationRead(notificationId: string): Promise<PostgrestResponse<Notification>> {
+  const response = await supabase
+    .from('notifications')
     .update({ is_read: true })
     .eq('id', notificationId);
+  return response as PostgrestResponse<Notification>;
 }
 
-export async function markAllNotificationsRead(userId: string) {
-  return supabase
-    .from<Notification>('notifications')
+export async function markAllNotificationsRead(userId: string): Promise<PostgrestResponse<Notification>> {
+  const response = await supabase
+    .from('notifications')
     .update({ is_read: true })
     .eq('user_id', userId)
     .eq('is_read', false);
+  return response as PostgrestResponse<Notification>;
 }
 
 export async function createNotification(payload: {
@@ -181,14 +207,18 @@ export async function createNotification(payload: {
   message: string;
   type?: Notification['type'];
   link?: string;
-}) {
-  return supabase.from<Notification>('notifications').insert({
-    user_id: payload.user_id,
-    title: payload.title,
-    message: payload.message,
-    type: payload.type ?? 'info',
-    link: payload.link ?? '',
-  });
+}): Promise<PostgrestResponse<Notification>> {
+  const response = await supabase.from('notifications').insert([
+    {
+      user_id: payload.user_id,
+      title: payload.title,
+      message: payload.message,
+      type: payload.type ?? 'info',
+      link: payload.link ?? '',
+    },
+  ]).select();
+
+  return response as PostgrestResponse<Notification>;
 }
 
 export async function fetchWikiTrendingTopics() {
