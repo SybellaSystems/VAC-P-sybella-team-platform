@@ -22,6 +22,7 @@ export default function AnalyticsPage() {
     memberActivity: [] as any[],
     roleDistribution: [] as any[],
     reportTrend: [] as any[],
+    reportHealthTrend: [] as any[],
     financeSummary: [] as any[],
   });
   const [loading, setLoading] = useState(true);
@@ -39,7 +40,7 @@ export default function AnalyticsPage() {
       supabase.from('projects').select('*'),
       supabase.from('tasks').select('*'),
       supabase.from('profiles').select('role, is_active'),
-      supabase.from('accountability_reports').select('report_date, status').order('report_date', { ascending: true }),
+      supabase.from('accountability_reports').select('report_date, status, operational_health, confidence_score').order('report_date', { ascending: true }),
       supabase.from('financial_records').select('type, amount, date'),
     ]);
 
@@ -80,7 +81,32 @@ export default function AnalyticsPage() {
         else if (r.status === 'flagged') reportTrendMap[r.report_date].flagged++;
       }
     });
-    const reportTrend = last14.map(d => reportTrendMap[d]);
+    const reportTrend = last14.map((d) => reportTrendMap[d]);
+
+    const reportHealthTrendMap: Record<string, { date: string; health: number; healthCount: number; confidence: number; confidenceCount: number }> = {};
+    last14.forEach((ds, index) => {
+      reportHealthTrendMap[ds] = { date: reportTrendMap[ds].date, health: 0, healthCount: 0, confidence: 0, confidenceCount: 0 };
+    });
+    (reports || []).forEach((r: any) => {
+      if (reportHealthTrendMap[r.report_date]) {
+        if (typeof r.operational_health === 'number') {
+          reportHealthTrendMap[r.report_date].health += r.operational_health;
+          reportHealthTrendMap[r.report_date].healthCount += 1;
+        }
+        if (typeof r.confidence_score === 'number') {
+          reportHealthTrendMap[r.report_date].confidence += r.confidence_score;
+          reportHealthTrendMap[r.report_date].confidenceCount += 1;
+        }
+      }
+    });
+    const reportHealthTrend = last14.map((d) => {
+      const record = reportHealthTrendMap[d];
+      return {
+        date: record.date,
+        averageHealth: record.healthCount ? Math.round(record.health / record.healthCount) : 0,
+        averageConfidence: record.confidenceCount ? Math.round(record.confidence / record.confidenceCount) : 0,
+      };
+    });
 
     // Finance by month
     const financeMonthMap: Record<string, { month: string; income: number; expense: number }> = {};
@@ -103,27 +129,31 @@ export default function AnalyticsPage() {
       reports: Math.round(Math.random() * 10 + 1),
     }));
 
-    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, financeSummary });
+    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary });
     setLoading(false);
   };
 
   const totalProjects = data.projectStats.reduce((s, d) => s + d.value, 0);
   const totalTasks = data.taskStats.reduce((s, d) => s + d.value, 0);
   const totalMembers = data.roleDistribution.reduce((s, d) => s + d.count, 0);
-  const completedTasks = data.taskStats.find(d => d.name === 'done')?.value || 0;
+  const completedTasks = data.taskStats.find((d) => d.name === 'done')?.value || 0;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const averageHealth = data.reportHealthTrend.length ? Math.round(data.reportHealthTrend.reduce((s, d) => s + d.averageHealth, 0) / data.reportHealthTrend.length) : 0;
+  const averageConfidence = data.reportHealthTrend.length ? Math.round(data.reportHealthTrend.reduce((s, d) => s + d.averageConfidence, 0) / data.reportHealthTrend.length) : 0;
 
   return (
     <div>
       <TopBar title="Analytics" subtitle="Performance insights and metrics" />
       <div className="p-6 space-y-5">
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {[
             { label: 'Total Projects', value: totalProjects, icon: FolderKanban, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: 'Total Tasks', value: totalTasks, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'Average Health', value: `${averageHealth}%`, icon: Activity, color: 'text-sky-600', bg: 'bg-sky-50' },
             { label: 'Team Members', value: totalMembers, icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: 'Task Completion', value: `${completionRate}%`, icon: TrendingUp, color: 'text-teal-600', bg: 'bg-teal-50' },
+            { label: 'Avg Confidence', value: `${averageConfidence}%`, icon: DollarSign, color: 'text-violet-600', bg: 'bg-violet-50' },
           ].map(({ label, value, icon: Icon, color, bg }) => (
             <div key={label} className="bg-white rounded-xl border border-border p-5">
               <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center mb-3`}>

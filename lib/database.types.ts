@@ -9,7 +9,11 @@ export type Role =
   | 'hr'
   | 'finance'
   | 'legal_counsel'
-  | 'marketing_manager';
+  | 'marketing_manager'
+  | 'customer_support'
+  | 'operations'
+  | 'ceo'
+  | string;
 
 export type Profile = {
   id: string;
@@ -25,6 +29,11 @@ export type Profile = {
   joined_at: string;
   created_at: string;
   updated_at: string;
+  notification_preferences?: {
+    browser?: boolean;
+    email?: boolean;
+    dnd?: boolean;
+  };
 };
 
 export type Customer = {
@@ -188,16 +197,33 @@ export type Message = {
   sender?: Profile;
 };
 
+export type ReportType = 'daily' | 'weekly' | 'monthly' | 'sprint' | 'milestone' | 'escalation';
+export type ReportStatus = 'draft' | 'submitted' | 'pending_approval' | 'reviewed' | 'approved' | 'flagged';
+export type ReportRiskLevel = 'normal' | 'low' | 'medium' | 'high' | 'critical';
+
 export type AccountabilityReport = {
   id: string;
   member_id: string;
   report_date: string;
-  report_type: 'daily' | 'weekly' | 'monthly';
+  report_type: ReportType;
+  report_role: Role;
+  department: string;
+  template: 'structured' | 'legacy';
   completed_tasks: string;
   planned_tasks: string;
   blockers: string;
   notes: string;
-  status: 'submitted' | 'reviewed' | 'approved' | 'flagged';
+  summary: string | null;
+  report_data: Record<string, any> | null;
+  kpi_snapshot: Record<string, number> | null;
+  related_project_ids: string[] | null;
+  related_task_ids: string[] | null;
+  operational_health: number | null;
+  confidence_score: number | null;
+  risk_level: ReportRiskLevel;
+  review_notes: string;
+  approval_workflow_id: string | null;
+  status: ReportStatus;
   reviewed_by: string | null;
   created_at: string;
   updated_at: string;
@@ -228,6 +254,27 @@ export type Notification = {
   is_read: boolean;
   link: string;
   created_at: string;
+};
+
+export type WikiPage = {
+  id: string;
+  slug: string;
+  title: string;
+  content: string;
+  summary: string | null;
+  is_published: boolean;
+  published_at: string | null;
+  created_by_user_id: string | null;
+  created_by_auth_user_id: string | null;
+  created_at: string;
+  updated_at: string;
+  metadata: {
+    template?: 'Policy' | 'Playbook' | 'Release note' | 'How-to' | 'FAQ' | 'Executive summary';
+    category?: string;
+    tags?: string[];
+    featured?: boolean;
+    cover_image?: string;
+  };
 };
 
 export type ProjectAssignment = {
