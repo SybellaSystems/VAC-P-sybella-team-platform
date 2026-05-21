@@ -400,7 +400,7 @@ export default function AccountabilityPage() {
 
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-6rem)] overflow-y-auto p-6">
             <div className="flex flex-wrap items-start justify-between gap-4 mb-5">
               <div className="min-w-0 flex-1">
                 <h2 className="text-base font-bold text-foreground">Submit a Role-Based Report</h2>
@@ -465,27 +465,28 @@ export default function AccountabilityPage() {
       )}
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSelected(null)} />
-          <div className="relative bg-white w-full max-w-md h-full overflow-y-auto shadow-2xl p-6">
-            <div className="flex items-center justify-between mb-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div className="relative bg-white w-full max-w-3xl max-h-[calc(100vh-6rem)] overflow-hidden shadow-2xl rounded-3xl">
+            <div className="flex items-center justify-between border-b border-border px-6 py-4">
               <h2 className="font-bold text-foreground">Report Details</h2>
               <button onClick={() => setSelected(null)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button>
             </div>
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
-                <span className="text-white font-bold">
-                  {members[selected.member_id]?.full_name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || '?'}
-                </span>
+            <div className="overflow-y-auto p-6 space-y-6 max-h-[calc(100vh-10rem)]">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center">
+                    <span className="text-white font-bold">
+                      {members[selected.member_id]?.full_name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || '?'}
+                    </span>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">{members[selected.member_id]?.full_name}</p>
+                    <p className="text-xs text-muted-foreground">{new Date(selected.report_date).toLocaleDateString()} · {selected.report_type}</p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-semibold px-2 py-1 rounded-full ${statusColors[selected.status]}`}>{selected.status}</span>
               </div>
-              <div>
-                <p className="font-semibold text-foreground">{members[selected.member_id]?.full_name}</p>
-                <p className="text-xs text-muted-foreground">{new Date(selected.report_date).toLocaleDateString()} · {selected.report_type}</p>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusColors[selected.status]}`}>{selected.status}</span>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-4">
-              <div className="grid grid-cols-3 gap-3 text-xs">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 text-xs">
                 <div className="p-3 rounded-lg border border-emerald-200 bg-emerald-50">
                   <p className="font-semibold text-muted-foreground mb-1">Health</p>
                   <p className="text-foreground">{selected.operational_health ?? '—'}</p>

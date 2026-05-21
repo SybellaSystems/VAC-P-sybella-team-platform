@@ -407,7 +407,7 @@ export default function WikiPageRoute() {
       </div>
 
       <Dialog open={!!readPage} onOpenChange={(o) => !o && setReadPage(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="pr-8">{readPage?.title}</DialogTitle>
             <p className="text-xs text-muted-foreground">/{readPage?.slug}</p>
@@ -462,7 +462,7 @@ export default function WikiPageRoute() {
       </Dialog>
 
       <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[calc(100vh-6rem)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit wiki page' : 'New knowledge page'}</DialogTitle>
             <p className="text-xs text-muted-foreground">Step {wizardStep} of 4</p>
