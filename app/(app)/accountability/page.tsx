@@ -15,6 +15,7 @@ import {
   RoleReportField,
   RoleReportTemplate,
 } from '@/lib/accountability';
+import { createNotification } from '@/lib/queries';
 import { Plus, CircleCheck as CheckCircle, Clock, Eye, X, Flag } from 'lucide-react';
 
 const statusColors: Record<string, string> = {
@@ -106,7 +107,7 @@ export default function AccountabilityPage() {
       .map((field) => [field.id, Number(form[field.id] ?? 0)]),
     );
 
-    await supabase.from('accountability_reports').insert({
+    const insertResponse = await supabase.from('accountability_reports').insert({
       member_id: profile.id,
       report_date: new Date().toISOString().split('T')[0],
       report_type: form.report_type || 'daily',
@@ -125,6 +126,19 @@ export default function AccountabilityPage() {
       review_notes: '',
     });
 
+    if (insertResponse.error) {
+      setSaving(false);
+      return;
+    }
+
+    await createNotification({
+      user_id: profile.id,
+      title: 'Accountability report submitted',
+      message: `A new ${form.report_type || 'daily'} report was submitted by ${profile.full_name}.`,
+      type: 'info',
+      link: '/app/accountability',
+    });
+
     await loadAll();
     setSaving(false);
     setShowModal(false);
@@ -132,11 +146,26 @@ export default function AccountabilityPage() {
   };
 
   const handleReview = async (id: string, status: AccountabilityReport['status']) => {
-    await supabase.from('accountability_reports').update({ status, reviewed_by: profile?.id }).eq('id', id);
+    if (!profile) return;
+    const { error } = await supabase
+      .from('accountability_reports')
+      .update({ status, reviewed_by: profile.id })
+      .eq('id', id);
+
+    if (error) return;
+
     setReports((current) => current.map((r) => (r.id === id ? { ...r, status } : r)));
     if (selected?.id === id) {
       setSelected({ ...selected, status } as AccountabilityReport);
     }
+
+    await createNotification({
+      user_id: profile.id,
+      title: 'Accountability report reviewed',
+      message: `Report ${id} has been marked ${status} by ${profile.full_name}.`,
+      type: status === 'approved' ? 'success' : status === 'flagged' ? 'error' : 'info',
+      link: '/app/accountability',
+    });
   };
 
   const filtered = reports.filter(r => {

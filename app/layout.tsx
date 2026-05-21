@@ -2,6 +2,7 @@ import './globals.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { Toaster } from '@/components/ui/toaster';
 
@@ -12,11 +13,10 @@ export const metadata: Metadata = {
   description: 'Virtual Accountability & Collaboration Platform for Sybella Systems Ltd',
 
   manifest: '/manifest.json',
-
   icons: {
-    icon: '/favicon.ico',
+    icon: '/icons/icon-192.svg',
     shortcut: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    apple: '/icons/apple-touch-icon.svg',
   },
 
   appleWebApp: {
@@ -47,9 +47,11 @@ export default function RootLayout({
     <html lang="en">
       <body className={inter.className}>
         <AuthProvider>
-          {children}
-          <ServiceWorkerRegister />
-          <Toaster />
+          <NotificationProvider>
+            {children}
+            <ServiceWorkerRegister />
+            <Toaster />
+          </NotificationProvider>
         </AuthProvider>
       </body>
     </html>

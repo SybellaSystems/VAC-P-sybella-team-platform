@@ -1,12 +1,9 @@
 'use client';
 
-import { Bell, Search, CheckCircle2, ChevronRight } from 'lucide-react';
+import { Bell, Search, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useToast } from '@/hooks/use-toast';
+import { useNotifications } from '@/contexts/NotificationContext';
 import { Button } from '@/components/ui/button';
-import { fetchRecentNotifications, fetchUnreadNotificationCount, markNotificationRead, markAllNotificationsRead } from '@/lib/queries';
 
 interface TopBarProps {
   title: string;
@@ -15,41 +12,17 @@ interface TopBarProps {
 
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { profile } = useAuth();
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [notifications, setNotifications] = useState<Awaited<ReturnType<typeof fetchRecentNotifications>>['data']>([]);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-
-  const loadCounts = async () => {
-    if (!profile) return;
-    const { count } = await fetchUnreadNotificationCount(profile.id);
-    setUnreadCount(count ?? 0);
-  };
-
-  const loadNotifications = async () => {
-    if (!profile) return;
-    const { data } = await fetchRecentNotifications(profile.id);
-    setNotifications(data ?? []);
-  };
-
-  useEffect(() => {
-    if (!profile) return;
-    void loadCounts();
-    const channel = supabase
-      .channel(`notifications:user:${profile.id}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
-        () => {
-          void loadCounts();
-          if (notificationsOpen) void loadNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [profile, notificationsOpen]);
+  const {
+    notifications,
+    unreadCount,
+    unreadNotifications,
+    loading: notificationsLoading,
+    notificationsOpen,
+    setNotificationsOpen,
+    refreshNotifications,
+    markRead,
+    markAllRead,
+  } = useNotifications();
 
   const greeting = () => {
     const h = new Date().getHours();
@@ -58,53 +31,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
     return 'Good evening';
   };
 
-  const unreadNotifications = useMemo(
-    () => notifications.filter((notification) => !notification.is_read),
-    [notifications]
-  );
-  const latestNotificationRef = useRef<string | null>(null);
-  const { toast } = useToast();
-
-  useEffect(() => {
-    if (!notifications || notifications.length === 0) return;
-
-    const latest = notifications[0];
-    if (!latest || latest.id === latestNotificationRef.current) return;
-    latestNotificationRef.current = latest.id;
-
-    if (typeof window !== 'undefined' && 'Notification' in window) {
-      if (Notification.permission === 'default') {
-        Notification.requestPermission();
-      }
-      if (Notification.permission === 'granted') {
-        new Notification(latest.title, {
-          body: latest.message,
-          icon: '/favicon.ico',
-        });
-      }
-    }
-
-    toast({ title: latest.title, description: latest.message });
-  }, [notifications, toast]);
-
   const toggleNotifications = async () => {
-    setNotificationsOpen((open) => !open);
-    if (!notificationsOpen) {
-      await loadNotifications();
+    const nextOpen = !notificationsOpen;
+    setNotificationsOpen(nextOpen);
+    if (nextOpen) {
+      await refreshNotifications();
     }
-  };
-
-  const handleMarkRead = async (notificationId: string) => {
-    await markNotificationRead(notificationId);
-    void loadCounts();
-    void loadNotifications();
-  };
-
-  const handleMarkAllRead = async () => {
-    if (!profile) return;
-    await markAllNotificationsRead(profile.id);
-    void loadCounts();
-    void loadNotifications();
   };
 
   return (
@@ -130,6 +62,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             onClick={toggleNotifications}
             className="relative p-2 rounded-lg hover:bg-muted transition-colors"
             aria-label="Notifications"
+            aria-expanded={notificationsOpen}
           >
             <Bell size={18} className="text-muted-foreground" />
             {unreadCount > 0 && (
@@ -144,14 +77,18 @@ export function TopBar({ title, subtitle }: TopBarProps) {
               <div className="flex items-center justify-between border-b border-border px-4 py-3">
                 <div>
                   <p className="text-sm font-semibold">Notifications</p>
-                  <p className="text-xs text-muted-foreground">{unreadNotifications.length} new</p>
+                  <p className="text-xs text-muted-foreground">
+                    {notificationsLoading ? 'Refreshing...' : `${unreadNotifications.length} new`}
+                  </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleMarkAllRead}>
+                <Button variant="outline" size="sm" onClick={markAllRead}>
                   Mark all read
                 </Button>
               </div>
               <div className="max-h-96 overflow-y-auto">
-                {notifications.length === 0 ? (
+                {notificationsLoading ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">Loading notifications…</div>
+                ) : notifications.length === 0 ? (
                   <div className="p-6 text-center text-sm text-muted-foreground">No notifications yet</div>
                 ) : (
                   notifications.map((notification) => (
@@ -159,7 +96,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                       key={notification.id}
                       type="button"
                       onClick={async () => {
-                        await handleMarkRead(notification.id);
+                        await markRead(notification.id);
                         if (notification.link) window.location.href = notification.link;
                       }}
                       className="w-full text-left border-b border-border px-4 py-3 hover:bg-muted/80 transition-colors"

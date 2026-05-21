@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { navItemsForRole, type NavItem } from '@/lib/rbac';
+import { navSectionsForRole, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
 import { LogOut, ChevronRight } from 'lucide-react';
 import {
@@ -78,71 +78,80 @@ const roleColors: Record<Role, string> = {
   finance: 'bg-cyan-500',
   legal_counsel: 'bg-slate-400',
   marketing_manager: 'bg-fuchsia-500',
+  customer_support: 'bg-lime-500',
+  operations: 'bg-sky-500',
+  ceo: 'bg-amber-400',
 };
 
 export function Sidebar() {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
-  const navItems = navItemsForRole(profile?.role as Role);
+  const sections = navSectionsForRole(profile?.role);
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??';
 
   return (
-    <aside
-      className="hidden md:flex fixed left-0 top-0 h-screen w-64 flex-col z-30"
-      style={{ background: 'hsl(220, 25%, 11%)' }}
-    >
-      <div className="flex items-center gap-3 px-5 py-5 border-b" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <div className="w-9 h-9 rounded-lg bg-blue-600 flex items-center justify-center flex-shrink-0">
+    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-72 flex-col z-30 bg-slate-950 text-white">
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
+        <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center flex-shrink-0">
           <span className="text-white font-bold text-sm">SS</span>
         </div>
         <div>
           <p className="text-white font-bold text-sm leading-tight">Sybella Systems</p>
-          <p className="text-blue-400 text-xs font-medium">VAC-P Platform</p>
+          <p className="text-blue-300 text-xs font-medium">VAC-P Operations</p>
         </div>
       </div>
 
-      <nav className="flex-1 px-3 py-4 overflow-y-auto space-y-0.5">
-        {navItems.map((item: NavItem) => {
-          const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn('sidebar-link', isActive && 'active')}
-              style={{ color: isActive ? 'white' : 'hsl(215, 20%, 65%)' }}
-            >
-              <NavIcon name={item.icon} />
-              <span>{item.label}</span>
-              {isActive && <ChevronRight size={14} className="ml-auto" />}
-            </Link>
-          );
-        })}
+      <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
+        {sections.map((section: NavSection) => (
+          <div key={section.title} className="space-y-2">
+            <p className="px-3 text-xs uppercase tracking-[0.24em] text-slate-500">{section.title}</p>
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      'group flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-colors',
+                      isActive
+                        ? 'bg-slate-800 text-white'
+                        : 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                    )}
+                  >
+                    <NavIcon name={item.icon} />
+                    <span>{item.label}</span>
+                    {isActive && <ChevronRight size={14} className="ml-auto text-slate-400" />}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
 
-      <div className="px-3 pb-4 pt-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-        <div className="flex items-center gap-3 px-2 py-2 rounded-lg" style={{ background: 'rgba(255,255,255,0.05)' }}>
-          <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-bold">{initials}</span>
+      <div className="px-4 pb-4 pt-3 border-t border-white/10">
+        <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
+          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-sm font-semibold">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-white text-xs font-semibold truncate">{profile?.full_name || 'Loading...'}</p>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <div className={cn('w-1.5 h-1.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-gray-500')} />
-              <p className="text-xs capitalize" style={{ color: 'hsl(215, 15%, 55%)' }}>
-                {(profile?.role || '').replace('_', ' ')}
-              </p>
+            <p className="text-sm font-semibold truncate">{profile?.full_name || 'Loading...'}</p>
+            <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+              <span className={cn('h-2.5 w-2.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-slate-500')} />
+              <span className="capitalize">{(profile?.role || '').replace('_', ' ')}</span>
             </div>
           </div>
           <button
             type="button"
             onClick={signOut}
-            className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+            className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
             title="Sign out"
           >
-            <LogOut size={14} style={{ color: 'hsl(215, 15%, 55%)' }} />
+            <LogOut size={16} />
           </button>
         </div>
       </div>
