@@ -5,6 +5,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
 import { ServiceWorkerRegister } from '@/components/ServiceWorkerRegister';
 import { Toaster } from '@/components/ui/toaster';
+import { Analytics } from '@vercel/analytics/next';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -59,6 +60,7 @@ export default function RootLayout({
             <Toaster />
           </NotificationProvider>
         </AuthProvider>
+        <Analytics />
       </body>
     </html>
   );
