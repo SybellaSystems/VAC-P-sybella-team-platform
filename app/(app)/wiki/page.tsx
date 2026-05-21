@@ -160,24 +160,38 @@ export default function WikiPageRoute() {
   return (
     <div className="min-h-full">
       <TopBar title="Wiki" subtitle="Knowledge base — policies, guides, FAQs" />
-      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
           <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.24em] text-primary">Knowledge newsroom</p>
                 <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">A modern wiki designed like a newsroom.</h2>
                 <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Discover polished playbooks, release notes, policies, FAQs and team guides with curated templates, featured stories, and real-time update sync.
+                  Discover polished playbooks, release notes, policies, FAQs, and team guides with curated templates, featured stories, and real-time update sync.
                 </p>
               </div>
               {canEdit && (
                 <Button className="w-full max-w-xs justify-center lg:w-auto" onClick={openCreate}>
                   <Plus size={16} />
-                  New editorial page
+                  Create knowledge page
                 </Button>
               )}
             </div>
+
+            <div className="mt-6 grid gap-3 sm:grid-cols-3">
+              {[
+                { label: 'Total pages', value: pages.length },
+                { label: 'Live stories', value: pages.filter((page) => page.is_published).length },
+                { label: 'Featured articles', value: pages.filter((page) => page.metadata?.featured).length },
+              ].map((item) => (
+                <div key={item.label} className="rounded-3xl border border-border bg-white p-4 text-sm">
+                  <p className="text-2xl font-semibold text-foreground">{item.value}</p>
+                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground mt-1">{item.label}</p>
+                </div>
+              ))}
+            </div>
+
             <div className="mt-6 flex flex-wrap gap-2">
               <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Curated templates</span>
               <span className="rounded-full bg-secondary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-secondary">Featured stories</span>
@@ -186,35 +200,50 @@ export default function WikiPageRoute() {
           </section>
 
           <aside className="space-y-4">
-            <Card className="overflow-hidden bg-slate-950 text-white">
-              <CardHeader className="bg-slate-900">
-                <CardTitle>Trending knowledge</CardTitle>
-                <CardDescription>Most active categories from your shared knowledge base.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {pages.slice(0, 8).map((page) => (
-                  <div key={page.id} className="rounded-2xl border border-slate-800 bg-slate-950 px-4 py-3 hover:border-primary/70 transition-colors">
-                    <p className="text-sm font-semibold text-white">{page.title}</p>
-                    <p className="mt-1 text-xs text-slate-400">{page.summary ? page.summary.substring(0, 90) : 'Internal wiki story'}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
             <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
               <CardHeader>
-                <CardTitle>Fast search</CardTitle>
-                <CardDescription>Type any topic, policy, or workflow and the wiki updates instantly.</CardDescription>
+                <CardTitle>Trending knowledge</CardTitle>
+                <CardDescription>Most active categories in your shared wiki.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex flex-col gap-3">
-                  <div className="flex flex-wrap gap-2">
-                    {['Policy', 'How-to', 'Release', 'FAQ', 'Executive'].map((label) => (
-                      <span key={label} className="rounded-full bg-muted px-3 py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                  <p className="text-sm text-muted-foreground">Browse guides built for clear reading, quick edits, and polished team storytelling.</p>
+              <CardContent className="space-y-3">
+                {pages.slice(0, 6).map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    onClick={() => setReadPage(page)}
+                    className="w-full rounded-3xl border border-border bg-white p-4 text-left transition hover:border-primary/60"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-foreground">{page.title}</p>
+                      <span className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{page.metadata?.category || 'General'}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{page.summary || page.content.slice(0, 90) + '...'}</p>
+                  </button>
+                ))}
+                {pages.length === 0 && <p className="text-sm text-muted-foreground">No pages yet. Create the first knowledge article.</p>}
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
+              <CardHeader>
+                <CardTitle>Quick filters</CardTitle>
+                <CardDescription>Find policies, release notes, and workflows fast.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {['All', 'Policy', 'How-to', 'Release', 'FAQ', 'Executive'].map((name) => (
+                    <button
+                      key={name}
+                      type="button"
+                      onClick={() => setQ(name === 'All' ? '' : name)}
+                      className="rounded-2xl border border-border bg-white px-4 py-2 text-left text-sm font-semibold text-foreground transition hover:bg-primary/5"
+                    >
+                      {name}
+                    </button>
+                  ))}
+                </div>
+                <div className="rounded-3xl border border-dashed border-border bg-muted/70 p-4 text-sm text-muted-foreground">
+                  Start a new page with a framework that matches your story type and keep every team page crisp.
                 </div>
               </CardContent>
             </Card>

@@ -104,7 +104,7 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
+      <nav aria-label="Primary navigation" className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
         {sections.map((section: NavSection) => (
           <div key={section.title} className="space-y-2">
             <p className="px-3 text-xs uppercase tracking-[0.24em] text-slate-500">{section.title}</p>

@@ -33,8 +33,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-slate-100 text-foreground">
       <Sidebar />
       <MobileNav />
-      <main className="flex-1 w-full min-w-0 md:ml-64 overflow-y-auto bg-slate-50 pt-14 md:pt-0 min-h-0">
-        <div className="min-h-full bg-slate-50">{children}</div>
+      <main role="main" className="flex-1 w-full min-w-0 md:ml-72 overflow-y-auto bg-slate-50 pt-14 md:pt-0 min-h-0">
+        <div className="min-h-full bg-slate-50 px-4 sm:px-6 md:px-8">{children}</div>
       </main>
     </div>
   );

@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -15,7 +14,6 @@ import { Users, FolderKanban, CircleCheck as CheckCircle, DollarSign, TrendingUp
 const COLORS = ['hsl(213,88%,40%)', 'hsl(158,60%,40%)', 'hsl(35,82%,50%)', 'hsl(0,72%,51%)', 'hsl(195,75%,42%)', 'hsl(280,55%,52%)'];
 
 export default function AnalyticsPage() {
-  const { profile } = useAuth();
   const [data, setData] = useState({
     projectStats: [] as any[],
     taskStats: [] as any[],
@@ -24,6 +22,17 @@ export default function AnalyticsPage() {
     reportTrend: [] as any[],
     reportHealthTrend: [] as any[],
     financeSummary: [] as any[],
+    reportStats: {
+      totalReports: 0,
+      approvedReports: 0,
+      flaggedReports: 0,
+      submittedReports: 0,
+      draftReports: 0,
+      pendingReports: 0,
+      averageHealth: 0,
+      averageConfidence: 0,
+      approvalRate: 0,
+    },
   });
   const [loading, setLoading] = useState(true);
 
@@ -39,28 +48,34 @@ export default function AnalyticsPage() {
     ] = await Promise.all([
       supabase.from('projects').select('*'),
       supabase.from('tasks').select('*'),
-      supabase.from('profiles').select('role, is_active'),
-      supabase.from('accountability_reports').select('report_date, status, operational_health, confidence_score').order('report_date', { ascending: true }),
+      supabase.from('profiles').select('id, role, is_active'),
+      supabase.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id').order('report_date', { ascending: true }),
       supabase.from('financial_records').select('type, amount, date'),
     ]);
 
+    const projectsData = projects ?? [];
+    const tasksData = tasks ?? [];
+    const profilesData = profiles ?? [];
+    const reportsData = reports ?? [];
+    const financeData = finance ?? [];
+
     // Project by status
     const projectStatusMap: Record<string, number> = {};
-    (projects || []).forEach(p => {
+    projectsData.forEach((p: any) => {
       projectStatusMap[p.status] = (projectStatusMap[p.status] || 0) + 1;
     });
     const projectStats = Object.entries(projectStatusMap).map(([name, value]) => ({ name: name.replace('_', ' '), value }));
 
     // Task by status
     const taskStatusMap: Record<string, number> = {};
-    (tasks || []).forEach(t => {
+    tasksData.forEach((t: any) => {
       taskStatusMap[t.status] = (taskStatusMap[t.status] || 0) + 1;
     });
     const taskStats = Object.entries(taskStatusMap).map(([name, value]) => ({ name: name.replace('_', ' '), value }));
 
     // Role distribution
     const roleMap: Record<string, number> = {};
-    (profiles || []).forEach(p => {
+    profilesData.forEach((p: any) => {
       roleMap[p.role] = (roleMap[p.role] || 0) + 1;
     });
     const roleDistribution = Object.entries(roleMap).map(([role, count]) => ({ role, count }));
@@ -74,7 +89,7 @@ export default function AnalyticsPage() {
       reportTrendMap[ds] = { date: d.toLocaleDateString('default', { month: 'short', day: 'numeric' }), submitted: 0, approved: 0, flagged: 0 };
       return ds;
     });
-    (reports || []).forEach((r: any) => {
+    reportsData.forEach((r: any) => {
       if (reportTrendMap[r.report_date]) {
         if (r.status === 'submitted') reportTrendMap[r.report_date].submitted++;
         else if (r.status === 'approved') reportTrendMap[r.report_date].approved++;
@@ -84,10 +99,10 @@ export default function AnalyticsPage() {
     const reportTrend = last14.map((d) => reportTrendMap[d]);
 
     const reportHealthTrendMap: Record<string, { date: string; health: number; healthCount: number; confidence: number; confidenceCount: number }> = {};
-    last14.forEach((ds, index) => {
+    last14.forEach((ds) => {
       reportHealthTrendMap[ds] = { date: reportTrendMap[ds].date, health: 0, healthCount: 0, confidence: 0, confidenceCount: 0 };
     });
-    (reports || []).forEach((r: any) => {
+    reportsData.forEach((r: any) => {
       if (reportHealthTrendMap[r.report_date]) {
         if (typeof r.operational_health === 'number') {
           reportHealthTrendMap[r.report_date].health += r.operational_health;
@@ -108,9 +123,55 @@ export default function AnalyticsPage() {
       };
     });
 
+    const reportStats = {
+      totalReports: reportsData.length,
+      approvedReports: reportsData.filter((r: any) => r.status === 'approved').length,
+      flaggedReports: reportsData.filter((r: any) => r.status === 'flagged').length,
+      submittedReports: reportsData.filter((r: any) => r.status === 'submitted').length,
+      draftReports: reportsData.filter((r: any) => r.status === 'draft').length,
+      pendingReports: reportsData.filter((r: any) => ['pending_approval', 'reviewed'].includes(r.status)).length,
+      averageHealth: reportHealthTrend.length ? Math.round(reportHealthTrend.reduce((sum, row) => sum + row.averageHealth, 0) / reportHealthTrend.length) : 0,
+      averageConfidence: reportHealthTrend.length ? Math.round(reportHealthTrend.reduce((sum, row) => sum + row.averageConfidence, 0) / reportHealthTrend.length) : 0,
+      approvalRate: reportsData.length ? Math.round((reportsData.filter((r: any) => r.status === 'approved').length / reportsData.length) * 100) : 0,
+    };
+
+    // Team performance activity by role
+    const profileById = new Map(profilesData.map((p: any) => [p.id, p]));
+    const roleProjects: Record<string, Set<string>> = {};
+    const tasksByRole: Record<string, number> = {};
+    const reportsByRole: Record<string, number> = {};
+
+    profilesData.forEach((profile: any) => {
+      roleProjects[profile.role] = new Set();
+      tasksByRole[profile.role] = 0;
+      reportsByRole[profile.role] = 0;
+    });
+
+    tasksData.forEach((task: any) => {
+      const owner = profileById.get(task.assigned_to);
+      if (owner) {
+        tasksByRole[owner.role] = (tasksByRole[owner.role] || 0) + 1;
+        if (task.project_id) roleProjects[owner.role].add(task.project_id);
+      }
+    });
+
+    reportsData.forEach((report: any) => {
+      const author = profileById.get(report.member_id);
+      if (author) {
+        reportsByRole[author.role] = (reportsByRole[author.role] || 0) + 1;
+      }
+    });
+
+    const memberActivity = Object.keys(roleProjects).map((role) => ({
+      role,
+      projects: roleProjects[role].size,
+      tasks: tasksByRole[role] || 0,
+      reports: reportsByRole[role] || 0,
+    }));
+
     // Finance by month
     const financeMonthMap: Record<string, { month: string; income: number; expense: number }> = {};
-    (finance || []).forEach((f: any) => {
+    financeData.forEach((f: any) => {
       const month = f.date.slice(0, 7);
       if (!financeMonthMap[month]) financeMonthMap[month] = { month, income: 0, expense: 0 };
       if (f.type === 'income') financeMonthMap[month].income += f.amount;
@@ -121,25 +182,26 @@ export default function AnalyticsPage() {
       .slice(-6)
       .map(d => ({ ...d, month: new Date(d.month + '-01').toLocaleString('default', { month: 'short' }) }));
 
-    // Team performance radar (mock data since we don't have perf metrics)
-    const memberActivity = roleDistribution.map(r => ({
-      role: r.role,
-      projects: Math.round(Math.random() * 8 + 2),
-      tasks: Math.round(Math.random() * 20 + 5),
-      reports: Math.round(Math.random() * 10 + 1),
-    }));
+    const netCash = financeData.reduce((sum: number, record: any) => {
+      if (record.type === 'income') return sum + record.amount;
+      if (record.type === 'expense') return sum - record.amount;
+      return sum;
+    }, 0);
 
-    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary });
+    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary, reportStats });
     setLoading(false);
   };
 
   const totalProjects = data.projectStats.reduce((s, d) => s + d.value, 0);
   const totalTasks = data.taskStats.reduce((s, d) => s + d.value, 0);
-  const totalMembers = data.roleDistribution.reduce((s, d) => s + d.count, 0);
-  const completedTasks = data.taskStats.find((d) => d.name === 'done')?.value || 0;
+  const totalMembers = data.roleDistribution.reduce((sum, group) => sum + group.count, 0);
+  const completedTasks = data.taskStats.find((d) => d.name.toLowerCase() === 'done')?.value || 0;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  const averageHealth = data.reportHealthTrend.length ? Math.round(data.reportHealthTrend.reduce((s, d) => s + d.averageHealth, 0) / data.reportHealthTrend.length) : 0;
-  const averageConfidence = data.reportHealthTrend.length ? Math.round(data.reportHealthTrend.reduce((s, d) => s + d.averageConfidence, 0) / data.reportHealthTrend.length) : 0;
+  const totalReports = data.reportStats.totalReports;
+  const averageHealth = data.reportStats.averageHealth;
+  const averageConfidence = data.reportStats.averageConfidence;
+  const approvalRate = data.reportStats.approvalRate;
+  const netCash = data.financeSummary.reduce((sum, d) => sum + (d.income - d.expense), 0);
 
   return (
     <div>

@@ -63,7 +63,6 @@ const FINANCE_AND_GOVERNANCE: NavSection = {
   items: [
     { href: '/finance', label: 'Finance', icon: 'DollarSign', roles: ['admin', 'director', 'finance', 'manager'] },
     { href: '/finance-console', label: 'Finance console', icon: 'Landmark', roles: ['finance', 'admin', 'director'] },
-    { href: '/billing', label: 'Billing', icon: 'Wallet', roles: ['admin', 'director', 'manager', 'finance'] },
     { href: '/budget', label: 'Budgets', icon: 'Wallet', roles: ['admin', 'director', 'manager', 'developer', 'designer', 'qa', 'sales', 'hr', 'finance'] },
     { href: '/audit-logs', label: 'Audit logs', icon: 'ScrollText', roles: ['admin', 'director'] },
     { href: '/legal', label: 'Legal', icon: 'Scale', roles: ['legal_counsel', 'admin', 'director'] },

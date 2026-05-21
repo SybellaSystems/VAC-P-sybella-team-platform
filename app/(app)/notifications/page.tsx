@@ -20,6 +20,7 @@ export default function NotificationsPage() {
     unreadCount,
     notifications,
     loading: notificationsLoading,
+    lastSyncedAt,
   } = useNotifications();
   const [broadcastMessage, setBroadcastMessage] = useState('Your team has a new update in the platform.');
   const [subject, setSubject] = useState('Welcome to VAC-P');
@@ -185,6 +186,40 @@ export default function NotificationsPage() {
                 <p>{`Current inbox: ${notifications.length} recent notifications, ${unreadCount} unread.`}</p>
               </CardContent>
             </Card>
+
+            <Card className="rounded-3xl border border-border bg-white p-6 shadow-sm">
+              <CardHeader>
+                <CardTitle>Recent notifications</CardTitle>
+                <CardDescription>Latest alerts delivered to your workspace.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {notificationsLoading ? (
+                  <p className="text-sm text-muted-foreground">Refreshing inbox…</p>
+                ) : notifications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No recent notifications have arrived yet.</p>
+                ) : (
+                  notifications.slice(0, 5).map((notification) => (
+                    <div key={notification.id} className="rounded-3xl border border-border bg-muted/50 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{notification.message}</p>
+                        </div>
+                        <span className={`text-[11px] uppercase tracking-[0.22em] ${notification.is_read ? 'text-muted-foreground' : 'text-primary'}`}>
+                          {notification.is_read ? 'Read' : 'Unread'}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+              {lastSyncedAt ? (
+                <div className="border-t border-border px-6 py-3 text-xs text-muted-foreground">
+                  Last synced {new Date(lastSyncedAt).toLocaleString()}
+                </div>
+              ) : null}
+            </Card>
+
             {notificationsLoading && (
               <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
                 <CardHeader>
