@@ -1,9 +1,9 @@
 'use client';
 
-import { Bell, Search } from 'lucide-react';
+import { Bell, Search, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useState, useEffect } from 'react';
-import { supabase } from '@/lib/supabase';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { Button } from '@/components/ui/button';
 
 interface TopBarProps {
   title: string;
@@ -12,23 +12,31 @@ interface TopBarProps {
 
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { profile } = useAuth();
-  const [unreadCount, setUnreadCount] = useState(0);
-
-  useEffect(() => {
-    if (!profile) return;
-    supabase
-      .from('notifications')
-      .select('id', { count: 'exact' })
-      .eq('user_id', profile.id)
-      .eq('is_read', false)
-      .then(({ count }) => setUnreadCount(count ?? 0));
-  }, [profile]);
+  const {
+    notifications,
+    unreadCount,
+    unreadNotifications,
+    loading: notificationsLoading,
+    notificationsOpen,
+    setNotificationsOpen,
+    refreshNotifications,
+    markRead,
+    markAllRead,
+  } = useNotifications();
 
   const greeting = () => {
     const h = new Date().getHours();
     if (h < 12) return 'Good morning';
     if (h < 17) return 'Good afternoon';
     return 'Good evening';
+  };
+
+  const toggleNotifications = async () => {
+    const nextOpen = !notificationsOpen;
+    setNotificationsOpen(nextOpen);
+    if (nextOpen) {
+      await refreshNotifications();
+    }
   };
 
   return (
@@ -48,14 +56,73 @@ export function TopBar({ title, subtitle }: TopBarProps) {
           />
         </div>
 
-        <button className="relative p-2 rounded-lg hover:bg-muted transition-colors">
-          <Bell size={18} className="text-muted-foreground" />
-          {unreadCount > 0 && (
-            <span className="absolute top-1 right-1 w-4 h-4 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={toggleNotifications}
+            className="relative p-2 rounded-lg hover:bg-muted transition-colors"
+            aria-label="Notifications"
+            aria-expanded={notificationsOpen}
+          >
+            <Bell size={18} className="text-muted-foreground" />
+            {unreadCount > 0 && (
+              <span className="absolute top-1 right-1 w-4 h-4 bg-destructive text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </button>
+
+          {notificationsOpen && (
+            <div className="absolute right-0 mt-2 w-96 overflow-hidden rounded-3xl border border-border bg-white shadow-2xl">
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div>
+                  <p className="text-sm font-semibold">Notifications</p>
+                  <p className="text-xs text-muted-foreground">
+                    {notificationsLoading ? 'Refreshing...' : `${unreadNotifications.length} new`}
+                  </p>
+                </div>
+                <Button variant="outline" size="sm" onClick={markAllRead}>
+                  Mark all read
+                </Button>
+              </div>
+              <div className="max-h-96 overflow-y-auto">
+                {notificationsLoading ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">Loading notifications…</div>
+                ) : notifications.length === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">No notifications yet</div>
+                ) : (
+                  notifications.map((notification) => (
+                    <button
+                      key={notification.id}
+                      type="button"
+                      onClick={async () => {
+                        await markRead(notification.id);
+                        if (notification.link) window.location.href = notification.link;
+                      }}
+                      className="w-full text-left border-b border-border px-4 py-3 hover:bg-muted/80 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">{notification.title}</p>
+                        {!notification.is_read && (
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary">
+                            New
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{notification.message}</p>
+                      {notification.link ? (
+                        <div className="mt-2 flex items-center gap-1 text-[11px] text-primary">
+                          <span>View</span>
+                          <ChevronRight size={14} />
+                        </div>
+                      ) : null}
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
           )}
-        </button>
+        </div>
 
         <div className="flex items-center gap-2 pl-3 border-l border-border">
           <div className="text-right hidden sm:block">

@@ -331,12 +331,25 @@ CREATE TABLE IF NOT EXISTS accountability_reports (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   member_id uuid NOT NULL REFERENCES profiles(id),
   report_date date NOT NULL DEFAULT CURRENT_DATE,
-  report_type text DEFAULT 'daily' CHECK (report_type IN ('daily', 'weekly', 'monthly')),
+  report_type text DEFAULT 'daily' CHECK (report_type IN ('daily', 'weekly', 'monthly', 'sprint', 'milestone', 'escalation')),
+  report_role text DEFAULT 'manager',
+  department text DEFAULT '',
+  template text DEFAULT 'structured' CHECK (template IN ('structured', 'legacy')),
   completed_tasks text DEFAULT '',
   planned_tasks text DEFAULT '',
   blockers text DEFAULT '',
   notes text DEFAULT '',
-  status text DEFAULT 'submitted' CHECK (status IN ('submitted', 'reviewed', 'approved', 'flagged')),
+  summary text DEFAULT '',
+  report_data jsonb DEFAULT '{}'::jsonb,
+  kpi_snapshot jsonb DEFAULT '{}'::jsonb,
+  related_project_ids uuid[] DEFAULT '{}',
+  related_task_ids uuid[] DEFAULT '{}',
+  operational_health int DEFAULT 75,
+  confidence_score int DEFAULT 75,
+  risk_level text DEFAULT 'normal' CHECK (risk_level IN ('normal', 'low', 'medium', 'high', 'critical')),
+  review_notes text DEFAULT '',
+  approval_workflow_id uuid REFERENCES approval_workflows(id),
+  status text DEFAULT 'submitted' CHECK (status IN ('draft', 'submitted', 'pending_approval', 'reviewed', 'approved', 'flagged')),
   reviewed_by uuid REFERENCES profiles(id),
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
@@ -496,6 +509,9 @@ CREATE INDEX IF NOT EXISTS idx_messages_channel ON messages(channel_id);
 CREATE INDEX IF NOT EXISTS idx_messages_created ON messages(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_accountability_member ON accountability_reports(member_id);
 CREATE INDEX IF NOT EXISTS idx_accountability_date ON accountability_reports(report_date DESC);
+CREATE INDEX IF NOT EXISTS idx_accountability_report_type ON accountability_reports(report_type);
+CREATE INDEX IF NOT EXISTS idx_accountability_operational_health ON accountability_reports(operational_health);
+CREATE INDEX IF NOT EXISTS idx_accountability_status ON accountability_reports(status);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
 
 -- =============================================================
