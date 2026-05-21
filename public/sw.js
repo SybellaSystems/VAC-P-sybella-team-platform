@@ -1,5 +1,6 @@
-const CACHE_NAME = 'vacp-static-v2';
-const PRECACHE_URLS = ['/', '/manifest.json', '/favicon.ico', '/offline.html', '/icons/icon-192.svg', '/icons/icon-512.svg'];
+const CACHE_NAME = 'vacp-static-v3';
+const PRECACHE_URLS = ['/', '/manifest.json', '/favicon.ico', '/offline.html', '/icons/icon-192.svg', '/icons/icon-512.svg', '/icons/apple-touch-icon.svg'];
+
 
 self.addEventListener('install', (event) => {
   event.waitUntil(

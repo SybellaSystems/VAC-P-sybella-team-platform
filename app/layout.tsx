@@ -45,6 +45,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        {/* Ensure browser tab favicon is explicitly set (Next metadata may be cached). */}
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.svg" />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <NotificationProvider>
@@ -57,3 +63,4 @@ export default function RootLayout({
     </html>
   );
 }
+
