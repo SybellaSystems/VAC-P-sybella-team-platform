@@ -614,7 +614,7 @@ export default function MessagesPage() {
                 </div>
 
                 <p className="text-[10px] text-muted-foreground mt-1.5">
-                  Start a line with -> to create an unlinked task; start a line with ! to choose project + assignee and create a linked task.
+                  Start a line with {'-&gt'} to create an unlinked task; start a line with ! to choose project + assignee and create a linked task.
                 </p>
               </div>
             </>
