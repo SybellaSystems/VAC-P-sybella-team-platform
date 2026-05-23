@@ -41,19 +41,11 @@ export default function NotificationsPage() {
     }
   }, [profile, router]);
 
-  if (!profile) {
-    return <div className="p-6 text-sm text-muted-foreground">Loading user...</div>;
-  }
-
-  if (profile.role !== 'admin') {
-    return <div className="p-6 text-sm text-muted-foreground">Redirecting to authorized workspace...</div>;
-  }
-
   useEffect(() => {
-    if (profile.email) {
+    if (profile?.email) {
       setRecipient(profile.email);
     }
-  }, [profile.email]);
+  }, [profile?.email]);
 
   // IMPORTANT FIX: only admin should trigger refresh
   useEffect(() => {
@@ -61,6 +53,14 @@ export default function NotificationsPage() {
       void refreshNotifications();
     }
   }, [profile, refreshNotifications]);
+
+  if (!profile) {
+    return <div className="p-6 text-sm text-muted-foreground">Loading user...</div>;
+  }
+
+  if (profile.role !== 'admin') {
+    return <div className="p-6 text-sm text-muted-foreground">Redirecting to authorized workspace...</div>;
+  }
 
   const sendWelcomeEmail = async () => {
     if (!recipient) {
