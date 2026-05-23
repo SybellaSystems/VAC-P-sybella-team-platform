@@ -4,7 +4,16 @@ import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Project, Profile, ProjectFeatureLink, ProjectFeatureLinkType, TaskSubtask } from '@/lib/database.types';
+import type {
+  Project,
+  Profile,
+  ProjectFeatureLink,
+  ProjectFeatureLinkType,
+  ProjectIntegration,
+  ProjectIntegrationAuthType,
+  TaskSubtask,
+} from '@/lib/database.types';
+import { createProjectIntegration, fetchProjectIntegrations } from '@/lib/integrations';
 import { logAudit } from '@/lib/audit';
 import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2 } from 'lucide-react';
 import { parseISO } from 'date-fns';
@@ -53,6 +62,26 @@ export default function ProjectsPage() {
   const [pickRepos, setPickRepos] = useState<{ id: string; title: string }[]>([]);
   const [pickFinance, setPickFinance] = useState<{ id: string; title: string }[]>([]);
   const [subtaskDraft, setSubtaskDraft] = useState<Record<string, string>>({});
+  const [integrations, setIntegrations] = useState<ProjectIntegration[]>([]);
+  const [liveIntegrationData, setLiveIntegrationData] = useState<Record<string, any> | null>(null);
+  const [integrationLoading, setIntegrationLoading] = useState(false);
+  const [integrationForm, setIntegrationForm] = useState<{
+    platform: string;
+    endpoint: string;
+    auth_type: ProjectIntegrationAuthType;
+    apiKey: string;
+    bearerToken: string;
+    username: string;
+    password: string;
+  }>({
+    platform: '',
+    endpoint: '',
+    auth_type: 'none',
+    apiKey: '',
+    bearerToken: '',
+    username: '',
+    password: '',
+  });
 
   const canManage = ['admin','director','manager'].includes(profile?.role || '');
 
@@ -135,13 +164,41 @@ export default function ProjectsPage() {
     setLinkLabels(labels);
   };
 
+  const loadIntegrations = async (projectId: string) => {
+    const { data, error } = await fetchProjectIntegrations(projectId);
+    if (error) {
+      return;
+    }
+    setIntegrations((data as ProjectIntegration[]) || []);
+  };
+
+  const loadLiveIntegrationData = async (projectId: string) => {
+    if (!projectId) return;
+    setIntegrationLoading(true);
+    try {
+      const response = await fetch(`/api/integrations/project/${projectId}?live=true`);
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error || 'Unable to load live integration data.');
+      }
+      setLiveIntegrationData(payload.integrations?.[0]?.live_data ?? null);
+    } catch {
+      setLiveIntegrationData(null);
+    } finally {
+      setIntegrationLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!selectedProject) {
       setFeatureLinks([]);
       setLinkLabels({});
+      setIntegrations([]);
+      setLiveIntegrationData(null);
       return;
     }
     loadFeatureLinks(selectedProject.id);
+    loadIntegrations(selectedProject.id);
   }, [selectedProject?.id]);
 
   useEffect(() => {
@@ -198,6 +255,35 @@ export default function ProjectsPage() {
       details: `${linkPickType}:${linkPickId}`,
     });
     setLinkPickId('');
+  };
+
+  const addIntegration = async () => {
+    if (!selectedProject?.id || !integrationForm.platform.trim() || !integrationForm.endpoint.trim()) return;
+    const { data, error } = await createProjectIntegration({
+      project_id: selectedProject.id,
+      platform: integrationForm.platform.trim(),
+      endpoint: integrationForm.endpoint.trim(),
+      auth_type: integrationForm.auth_type,
+      credentials: {
+        apiKey: integrationForm.apiKey.trim() || undefined,
+        bearerToken: integrationForm.bearerToken.trim() || undefined,
+        username: integrationForm.username.trim() || undefined,
+        password: integrationForm.password.trim() || undefined,
+      },
+      created_by: profile?.id ?? null,
+    });
+
+    if (!error) {
+      setIntegrations((prev) => [...prev, (data as ProjectIntegration[])[0]]);
+      setIntegrationForm({ platform: '', endpoint: '', auth_type: 'none', apiKey: '', bearerToken: '', username: '', password: '' });
+      await logAudit({
+        event_type: 'project.integration_created',
+        entity_type: 'project',
+        entity_id: selectedProject.id,
+        action: 'create',
+        details: `platform=${integrationForm.platform}`,
+      });
+    }
   };
 
   const addSubtaskForTask = async (taskId: string) => {
@@ -624,6 +710,119 @@ export default function ProjectsPage() {
                       </li>
                     ))}
                   </ul>
+                )}
+              </div>
+
+              <div className="rounded-3xl border border-border bg-muted/50 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.24em] text-primary">Platform connection</p>
+                    <p className="text-sm font-semibold text-foreground">External integrations</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void (selectedProject?.id ? loadLiveIntegrationData(selectedProject.id) : undefined)}
+                    className="text-xs font-semibold text-primary hover:underline"
+                  >
+                    Refresh live data
+                  </button>
+                </div>
+                {integrations.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mb-3">No external platform connections configured yet.</p>
+                ) : (
+                  <div className="space-y-2 mb-3">
+                    {integrations.map((integration) => (
+                      <div key={integration.id} className="rounded-2xl border border-border bg-white p-3 text-xs">
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <div>
+                            <p className="font-semibold text-foreground">{integration.platform}</p>
+                            <p className="text-muted-foreground truncate">{integration.endpoint}</p>
+                          </div>
+                          <span className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+                            {integration.auth_type}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">
+                          Last synced: {integration.last_synced_at ? new Date(integration.last_synced_at).toLocaleString() : 'never'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid gap-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <input
+                      value={integrationForm.platform}
+                      onChange={(e) => setIntegrationForm((prev) => ({ ...prev, platform: e.target.value }))}
+                      placeholder="Platform name"
+                      className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                    />
+                    <input
+                      value={integrationForm.endpoint}
+                      onChange={(e) => setIntegrationForm((prev) => ({ ...prev, endpoint: e.target.value }))}
+                      placeholder="Data endpoint URL"
+                      className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <select
+                      value={integrationForm.auth_type}
+                      onChange={(e) => setIntegrationForm((prev) => ({ ...prev, auth_type: e.target.value as ProjectIntegrationAuthType }))}
+                      className="text-xs border border-input rounded-lg px-3 py-2 bg-white"
+                    >
+                      <option value="none">No auth</option>
+                      <option value="apikey">API key</option>
+                      <option value="bearer">Bearer token</option>
+                      <option value="basic">Basic auth</option>
+                    </select>
+                    <input
+                      value={integrationForm.apiKey}
+                      onChange={(e) => setIntegrationForm((prev) => ({ ...prev, apiKey: e.target.value }))}
+                      placeholder="API key"
+                      className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                    />
+                    <input
+                      value={integrationForm.bearerToken}
+                      onChange={(e) => setIntegrationForm((prev) => ({ ...prev, bearerToken: e.target.value }))}
+                      placeholder="Bearer token"
+                      className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                    />
+                  </div>
+                  {integrationForm.auth_type === 'basic' && (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <input
+                        value={integrationForm.username}
+                        onChange={(e) => setIntegrationForm((prev) => ({ ...prev, username: e.target.value }))}
+                        placeholder="Username"
+                        className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                      />
+                      <input
+                        type="password"
+                        value={integrationForm.password}
+                        onChange={(e) => setIntegrationForm((prev) => ({ ...prev, password: e.target.value }))}
+                        placeholder="Password"
+                        className="w-full text-xs px-3 py-2 border border-input rounded-lg bg-white"
+                      />
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void addIntegration()}
+                    className="text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground"
+                  >
+                    Add integration
+                  </button>
+                </div>
+
+                {integrationLoading && (
+                  <p className="mt-3 text-xs text-muted-foreground">Fetching live integration data…</p>
+                )}
+                {liveIntegrationData && (
+                  <div className="mt-3 rounded-2xl border border-border bg-white p-3 text-xs text-foreground">
+                    <p className="font-semibold text-sm mb-2">Live integration preview</p>
+                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px]">{JSON.stringify(liveIntegrationData, null, 2)}</pre>
+                  </div>
                 )}
               </div>
 

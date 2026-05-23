@@ -43,7 +43,7 @@ const WORKSPACE: NavSection = {
     { href: '/accountability', label: 'Accountability', icon: 'ClipboardList', roles: ALL_ROLES },
     { href: '/approvals', label: 'Approvals', icon: 'CheckSquare', roles: ['admin', 'director', 'hr', 'manager', 'finance'] },
     { href: '/messages', label: 'Messages', icon: 'MessageSquare', roles: ALL_ROLES },
-    { href: '/notifications', label: 'Notifications', icon: 'Bell', roles: ALL_ROLES },
+    { href: '/notifications', label: 'Notifications', icon: 'Bell', roles: ['admin'] },
   ],
 };
 

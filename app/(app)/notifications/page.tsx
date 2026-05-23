@@ -10,9 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { useRouter } from 'next/navigation';
 
 export default function NotificationsPage() {
   const { profile } = useAuth();
+  const router = useRouter();
+
   const {
     preferences,
     setPreferences,
@@ -22,20 +25,39 @@ export default function NotificationsPage() {
     loading: notificationsLoading,
     lastSyncedAt,
   } = useNotifications();
+
   const [broadcastMessage, setBroadcastMessage] = useState('Your team has a new update in the platform.');
   const [subject, setSubject] = useState('Welcome to VAC-P');
   const [recipient, setRecipient] = useState(profile?.email ?? '');
   const [sending, setSending] = useState(false);
   const { toast } = useToast();
 
+  // 🔐 ADMIN GUARD (added)
   useEffect(() => {
-    if (profile?.email) {
-      setRecipient(profile.email);
+    if (!profile) return;
+
+    if (profile.role !== 'admin') {
+      router.replace('/unauthorized');
     }
-  }, [profile?.email]);
+  }, [profile, router]);
+
+  if (!profile) {
+    return <div className="p-6 text-sm text-muted-foreground">Loading user...</div>;
+  }
+
+  if (profile.role !== 'admin') {
+    return <div className="p-6 text-sm text-muted-foreground">Redirecting to authorized workspace...</div>;
+  }
 
   useEffect(() => {
-    if (profile) {
+    if (profile.email) {
+      setRecipient(profile.email);
+    }
+  }, [profile.email]);
+
+  // IMPORTANT FIX: only admin should trigger refresh
+  useEffect(() => {
+    if (profile?.role === 'admin') {
       void refreshNotifications();
     }
   }, [profile, refreshNotifications]);
@@ -57,11 +79,16 @@ export default function NotificationsPage() {
           html: `<p>Hi ${profile?.full_name ?? 'team'},</p><p>Welcome to VAC-P. This transactional email confirms your access to our operational workspace and notification service.</p>`,
         }),
       });
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to send email.');
+
       toast({ title: 'Email queued', description: 'Transactional email sent successfully.' });
     } catch (error) {
-      toast({ title: 'Email failed', description: error instanceof Error ? error.message : 'Unable to send transactional email.' });
+      toast({
+        title: 'Email failed',
+        description: error instanceof Error ? error.message : 'Unable to send transactional email.',
+      });
     } finally {
       setSending(false);
     }
@@ -75,12 +102,17 @@ export default function NotificationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: 'Platform update', message: broadcastMessage, type: 'info' }),
       });
+
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Unable to broadcast notification.');
+
       toast({ title: 'Broadcast sent', description: `Delivered to ${data.delivered} active users.` });
       void refreshNotifications();
     } catch (error) {
-      toast({ title: 'Broadcast failed', description: error instanceof Error ? error.message : 'Unable to broadcast notification.' });
+      toast({
+        title: 'Broadcast failed',
+        description: error instanceof Error ? error.message : 'Unable to broadcast notification.',
+      });
     } finally {
       setSending(false);
     }
@@ -89,49 +121,74 @@ export default function NotificationsPage() {
   return (
     <div className="min-h-full">
       <TopBar title="Notifications" subtitle="Preferences, broadcasts, and email service" />
+
       <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+
           <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
             <div className="flex flex-col gap-3 md:flex-row md:justify-between md:items-end">
               <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-primary">Notification center</p>
-                <h2 className="mt-3 text-3xl font-semibold text-foreground">Control how your team receives alerts.</h2>
+                <p className="text-sm uppercase tracking-[0.24em] text-primary">
+                  Notification center
+                </p>
+                <h2 className="mt-3 text-3xl font-semibold text-foreground">
+                  Control how your team receives alerts.
+                </h2>
               </div>
+
               <div className="text-sm text-muted-foreground">
                 {profile ? `${profile.full_name} • ${profile.role}` : 'Loading preferences...'}
               </div>
             </div>
 
             <div className="mt-6 space-y-4">
+
               <Card className="rounded-3xl border border-border bg-white p-6 shadow-sm">
                 <CardHeader>
                   <CardTitle>Preference center</CardTitle>
                   <CardDescription>Select channels and quiet times for notifications.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-5">
+
                   <div className="flex items-center justify-between gap-4 rounded-3xl border border-border bg-muted/50 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Browser push</p>
-                      <p className="text-sm text-muted-foreground">Show in-app and browser notifications when new alerts arrive.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Show in-app and browser notifications when new alerts arrive.
+                      </p>
                     </div>
-                    <Switch checked={preferences.browser} onCheckedChange={(checked) => setPreferences({ ...preferences, browser: checked })} />
+                    <Switch
+                      checked={preferences.browser}
+                      onCheckedChange={(checked) => setPreferences({ ...preferences, browser: checked })}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between gap-4 rounded-3xl border border-border bg-muted/50 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Email delivery</p>
-                      <p className="text-sm text-muted-foreground">Send important notifications via transactional email.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Send important notifications via transactional email.
+                      </p>
                     </div>
-                    <Switch checked={preferences.email} onCheckedChange={(checked) => setPreferences({ ...preferences, email: checked })} />
+                    <Switch
+                      checked={preferences.email}
+                      onCheckedChange={(checked) => setPreferences({ ...preferences, email: checked })}
+                    />
                   </div>
 
                   <div className="flex items-center justify-between gap-4 rounded-3xl border border-border bg-muted/50 p-4">
                     <div>
                       <p className="text-sm font-semibold text-foreground">Do not disturb</p>
-                      <p className="text-sm text-muted-foreground">Pause non-critical alerts during quiet hours.</p>
+                      <p className="text-sm text-muted-foreground">
+                        Pause non-critical alerts during quiet hours.
+                      </p>
                     </div>
-                    <Switch checked={preferences.dnd} onCheckedChange={(checked) => setPreferences({ ...preferences, dnd: checked })} />
+                    <Switch
+                      checked={preferences.dnd}
+                      onCheckedChange={(checked) => setPreferences({ ...preferences, dnd: checked })}
+                    />
                   </div>
+
                 </CardContent>
               </Card>
 
@@ -141,17 +198,29 @@ export default function NotificationsPage() {
                   <CardDescription>Test the new email service integration.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+
                   <div>
                     <label className="text-xs font-medium text-foreground">Recipient</label>
-                    <Input value={recipient} onChange={(e) => setRecipient(e.target.value)} placeholder="team@example.com" className="mt-2" />
+                    <Input
+                      value={recipient}
+                      onChange={(e) => setRecipient(e.target.value)}
+                      className="mt-2"
+                    />
                   </div>
+
                   <div>
                     <label className="text-xs font-medium text-foreground">Subject</label>
-                    <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Welcome to VAC-P" className="mt-2" />
+                    <Input
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      className="mt-2"
+                    />
                   </div>
+
                   <Button onClick={sendWelcomeEmail} disabled={sending}>
                     {sending ? 'Sending...' : 'Send welcome email'}
                   </Button>
+
                 </CardContent>
               </Card>
 
@@ -161,19 +230,29 @@ export default function NotificationsPage() {
                   <CardDescription>Publish a notification to all active users.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+
                   <div>
                     <label className="text-xs font-medium text-foreground">Message</label>
-                    <Textarea value={broadcastMessage} onChange={(e) => setBroadcastMessage(e.target.value)} rows={5} className="mt-2" />
+                    <Textarea
+                      value={broadcastMessage}
+                      onChange={(e) => setBroadcastMessage(e.target.value)}
+                      rows={5}
+                      className="mt-2"
+                    />
                   </div>
+
                   <Button onClick={broadcastNotification} disabled={sending}>
                     {sending ? 'Sending...' : 'Broadcast to workspace'}
                   </Button>
+
                 </CardContent>
               </Card>
+
             </div>
           </section>
 
           <aside className="space-y-4">
+
             <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
               <CardHeader>
                 <CardTitle>Why this matters</CardTitle>
@@ -192,6 +271,7 @@ export default function NotificationsPage() {
                 <CardTitle>Recent notifications</CardTitle>
                 <CardDescription>Latest alerts delivered to your workspace.</CardDescription>
               </CardHeader>
+
               <CardContent className="space-y-3">
                 {notificationsLoading ? (
                   <p className="text-sm text-muted-foreground">Refreshing inbox…</p>
@@ -200,19 +280,13 @@ export default function NotificationsPage() {
                 ) : (
                   notifications.slice(0, 5).map((notification) => (
                     <div key={notification.id} className="rounded-3xl border border-border bg-muted/50 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{notification.title}</p>
-                          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{notification.message}</p>
-                        </div>
-                        <span className={`text-[11px] uppercase tracking-[0.22em] ${notification.is_read ? 'text-muted-foreground' : 'text-primary'}`}>
-                          {notification.is_read ? 'Read' : 'Unread'}
-                        </span>
-                      </div>
+                      <p className="text-sm font-semibold">{notification.title}</p>
+                      <p className="text-xs text-muted-foreground">{notification.message}</p>
                     </div>
                   ))
                 )}
               </CardContent>
+
               {lastSyncedAt ? (
                 <div className="border-t border-border px-6 py-3 text-xs text-muted-foreground">
                   Last synced {new Date(lastSyncedAt).toLocaleString()}
@@ -220,15 +294,6 @@ export default function NotificationsPage() {
               ) : null}
             </Card>
 
-            {notificationsLoading && (
-              <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-                <CardHeader>
-                  <CardTitle>Refreshing</CardTitle>
-                  <CardDescription>Notifications are kept in sync in real time.</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">Fetching the latest delivery state from your workspace.</CardContent>
-              </Card>
-            )}
           </aside>
         </div>
       </div>

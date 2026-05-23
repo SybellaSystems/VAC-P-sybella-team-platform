@@ -112,6 +112,30 @@ export type ProjectFeatureLink = {
   created_at: string;
 };
 
+export type ProjectIntegrationAuthType = 'none' | 'apikey' | 'basic' | 'bearer' | 'oauth';
+
+export type ProjectIntegrationCredentials = {
+  apiKey?: string;
+  bearerToken?: string;
+  username?: string;
+  password?: string;
+  [key: string]: any;
+};
+
+export type ProjectIntegration = {
+  id: string;
+  project_id: string;
+  platform: string;
+  endpoint: string;
+  auth_type: ProjectIntegrationAuthType;
+  credentials: ProjectIntegrationCredentials | null;
+  metadata: Record<string, any>;
+  last_synced_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ShareAllocation = {
   id: string;
   share_id: string;
