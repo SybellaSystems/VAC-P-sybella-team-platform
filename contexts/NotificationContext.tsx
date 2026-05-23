@@ -182,13 +182,15 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
         async (payload) => {
+          const incoming = payload?.new as Notification | null;
+          if (!incoming || incoming.user_id !== profile.id) return;
+
+          setNotifications((prev) => [incoming, ...prev.filter((item) => item.id !== incoming.id)]);
           await refreshCounts();
           if (notificationsOpen) {
             await refreshNotifications();
           }
 
-          const incoming = payload?.new as Notification | null;
-          if (!incoming || incoming.user_id !== profile.id) return;
           if (!preferences.browser || preferences.dnd) return;
 
           if (typeof window !== 'undefined' && 'Notification' in window) {
