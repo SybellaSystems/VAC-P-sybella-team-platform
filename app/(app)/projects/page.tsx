@@ -717,18 +717,32 @@ export default function ProjectsPage() {
                 <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="text-xs uppercase tracking-[0.24em] text-primary">Platform connection</p>
-                    <p className="text-sm font-semibold text-foreground">External integrations</p>
+                    <p className="text-sm font-semibold text-foreground">External data sources</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void (selectedProject?.id ? loadLiveIntegrationData(selectedProject.id) : undefined)}
-                    className="text-xs font-semibold text-primary hover:underline"
-                  >
-                    Refresh live data
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <input
+                        type="checkbox"
+                        checked={integrations.length > 0}
+                        onChange={() => {
+                          // This checkbox is informational: integrations are configured via the “Add integration” form below.
+                          // If integrations.length === 0 it effectively means “not linked yet”.
+                        }}
+                      />
+                      Link external data sources
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void (selectedProject?.id ? loadLiveIntegrationData(selectedProject.id) : undefined)}
+                      className="text-xs font-semibold text-primary hover:underline"
+                    >
+                      Refresh live data
+                    </button>
+                  </div>
                 </div>
+
                 {integrations.length === 0 ? (
-                  <p className="text-xs text-muted-foreground mb-3">No external platform connections configured yet.</p>
+                  <p className="text-xs text-muted-foreground mb-3">No external platform connections configured yet. Add an integration to enable live pull and pushed data preview.</p>
                 ) : (
                   <div className="space-y-2 mb-3">
                     {integrations.map((integration) => (
@@ -743,8 +757,14 @@ export default function ProjectsPage() {
                           </span>
                         </div>
                         <div className="text-[10px] text-muted-foreground">
-                          Last synced: {integration.last_synced_at ? new Date(integration.last_synced_at).toLocaleString() : 'never'}
+                          Last push: {integration.last_pushed_at ? new Date(integration.last_pushed_at).toLocaleString() : 'never'}
                         </div>
+                        {integration.last_pushed_payload && (
+                          <div className="mt-2">
+                            <p className="text-[10px] font-semibold text-foreground mb-1">Latest pushed payload</p>
+                            <pre className="max-h-36 overflow-auto whitespace-pre-wrap break-words text-[10px] bg-muted/30 rounded p-2">{JSON.stringify(integration.last_pushed_payload, null, 2)}</pre>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

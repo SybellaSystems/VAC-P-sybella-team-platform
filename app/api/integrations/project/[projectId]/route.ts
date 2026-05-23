@@ -19,7 +19,13 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   const integrations = (data || []) as any[];
   const payload = await Promise.all(
     integrations.map(async (integration) => {
-      const sanitized = { ...integration, credentials: null };
+      const sanitized: any = { ...integration, credentials: null };
+
+      // Always provide last pushed data (if present)
+      if (sanitized.last_pushed_payload !== undefined) {
+        sanitized.pushed_data = sanitized.last_pushed_payload;
+      }
+
       if (live) {
         try {
           sanitized.live_data = await fetchExternalIntegrationData(integration);
@@ -32,6 +38,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
           sanitized.live_data = { error: err instanceof Error ? err.message : 'Unable to fetch live data' };
         }
       }
+
       return sanitized;
     })
   );

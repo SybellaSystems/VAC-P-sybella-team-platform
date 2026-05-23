@@ -131,6 +131,8 @@ export type ProjectIntegration = {
   credentials: ProjectIntegrationCredentials | null;
   metadata: Record<string, any>;
   last_synced_at: string | null;
+  last_pushed_payload?: any;
+  last_pushed_at?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -312,3 +314,4 @@ export type ProjectAssignment = {
 // Supabase Database type - uses any for simplicity with the supabase-js client
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Database = any;
+
