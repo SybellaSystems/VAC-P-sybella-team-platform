@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Channel, Message, Profile, Project, Task } from '@/lib/database.types';
+import type { Channel, Message, Profile, Project } from '@/lib/database.types';
 import { Hash, Search, TriangleAlert as AlertTriangle, X, Send } from 'lucide-react';
 import { logAudit } from '@/lib/audit';
 
@@ -24,10 +24,10 @@ export default function MessagesPage() {
 
   // Modal state for immediate ! -> choose project + assignee.
   const [taskModalOpen, setTaskModalOpen] = useState(false);
-  const [pendingTaskLine, setPendingTaskLine] = useState<string>('');
-  const [taskProjectId, setTaskProjectId] = useState<string>('');
-  const [taskAssigneeId, setTaskAssigneeId] = useState<string>('');
-  const [taskTitle, setTaskTitle] = useState<string>('');
+  const [pendingTaskLine, setPendingTaskLine] = useState('');
+  const [taskProjectId, setTaskProjectId] = useState('');
+  const [taskAssigneeId, setTaskAssigneeId] = useState('');
+  const [taskTitle, setTaskTitle] = useState('');
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -109,7 +109,6 @@ export default function MessagesPage() {
 
     const list = (data as Message[]) || [];
 
-    // Resolve sender profiles for display
     const senderIds = Array.from(new Set(list.map(m => m.sender_id)));
     const map: Record<string, Profile> = { ...members };
 
@@ -199,33 +198,23 @@ export default function MessagesPage() {
     return partial?.id ?? null;
   };
 
-  // When user types ! on a new line, open modal and extract best-effort defaults.
   const maybeOpenTaskModalOnInputChange = (nextValue: string) => {
-    // Only open when user just typed a line starting with ! (not when editing existing lines).
     const cursorLine = nextValue.split('\n').slice(-1)[0] || '';
     const lineTrimmed = cursorLine.trim();
     if (!lineTrimmed.startsWith('!')) return;
-
-    // Modal open only if we have a channel and profile.
     if (!activeChannel || !profile) return;
 
-    // Parse tentative defaults from current line.
-    // Expected: ! <ProjectToken> | @assignee -> task title
-    // Also allow missing pieces (modal still opens and user can complete).
     const pendingLine = lineTrimmed;
 
-    // ProjectToken up to first '|'
     const bangMatch = pendingLine.match(/^!\s*([^|]+?)\s*\|\s*(.+)$/);
     const rest = bangMatch ? bangMatch[2] : '';
 
     const projectToken = bangMatch ? bangMatch[1].trim() : '';
     const projectId = projectToken ? resolveProjectFromToken(projectToken) || '' : '';
 
-    // Assignee from @...
     const mentionMatch = rest.match(/@([\w.-]+)/);
     const assigneeId = mentionMatch ? resolveAssigneeFromToken(mentionMatch[0], Object.values(members)) || '' : '';
 
-    // Task title after -> or →
     const arrowMatch = rest.match(/^(?:->|→)\s*(.+)$/);
     const defaultTitle = arrowMatch ? arrowMatch[1].trim().replace(/@([\w.-]+)/g, '').trim() : '';
 
@@ -244,7 +233,6 @@ export default function MessagesPage() {
 
     setSending(true);
 
-    // Insert message first (in the same channel user is currently in)
     await supabase.from('messages').insert({
       channel_id: activeChannel.id,
       sender_id: profile.id,
@@ -252,7 +240,6 @@ export default function MessagesPage() {
       message_type: msgType,
     });
 
-    // Then insert linked task for chosen project.
     if (taskProjectId && taskTitle.trim()) {
       const { data: createdTask, error } = await supabase
         .from('tasks')
@@ -290,7 +277,6 @@ export default function MessagesPage() {
   };
 
   const sendMessage = async () => {
-    // If task modal is open, sending via modal is the canonical flow.
     if (taskModalOpen) return;
     if (!input.trim() || !activeChannel || !profile) return;
 
@@ -304,8 +290,6 @@ export default function MessagesPage() {
       message_type: msgType,
     });
 
-    // Keep backward compatible behavior for '->' lines: create unlinked tasks (project_id=null)
-    // (No ! parsing here because ! is handled by modal UX.)
     const lines = body.split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
@@ -413,7 +397,6 @@ export default function MessagesPage() {
                 className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted"
                 type="button"
                 onClick={() => {
-                  // keep message draft; just close modal
                   setTaskModalOpen(false);
                 }}
               >
@@ -491,7 +474,7 @@ export default function MessagesPage() {
 
                     <div className="space-y-3">
                       {dayMsgs.map((msg, i) => {
-                        const sender = (msg.sender || members[msg.sender_id]);
+                        const sender = msg.sender || members[msg.sender_id];
                         const isOwn = msg.sender_id === profile?.id;
                         const displayName = isOwn ? 'You' : sender?.full_name?.trim() || 'Team member';
                         const roleLabel = !isOwn && sender?.role ? sender.role.replace('_', ' ') : '';
@@ -631,8 +614,7 @@ export default function MessagesPage() {
                 </div>
 
                 <p className="text-[10px] text-muted-foreground mt-1.5">
-                  Press Enter to send, Shift+Enter for new line. Start a line with <kbd className="px-1 rounded bg-muted">-></kbd> to create an unlinked task; start a line with <kbd className="px-1 rounded bg-muted">!</kbd> to choose project + assignee and create a linked task.
-
+                  Start a line with -> to create an unlinked task; start a line with ! to choose project + assignee and create a linked task.
                 </p>
               </div>
             </>
