@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Channel, Message, Profile } from '@/lib/database.types';
+import type { Channel, Message, Profile, Project } from '@/lib/database.types';
 import { Send, Hash, Plus, Search, TriangleAlert as AlertTriangle, X } from 'lucide-react';
 import { logAudit } from '@/lib/audit';
 
@@ -14,11 +14,14 @@ export default function MessagesPage() {
   const [activeChannel, setActiveChannel] = useState<Channel | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [members, setMembers] = useState<Record<string, Profile>>({});
+  const [projects, setProjects] = useState<Project[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
   const [msgType, setMsgType] = useState<'text' | 'report' | 'escalation'>('text');
   const bottomRef = useRef<HTMLDivElement>(null);
+  const membersRef = useRef<Record<string, Profile>>({});
+  const projectsRef = useRef<Project[]>([]);
 
   useEffect(() => {
     loadChannels();
