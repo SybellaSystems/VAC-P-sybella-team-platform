@@ -179,7 +179,8 @@ export default function LoginPage() {
               <p className="text-xs text-muted-foreground text-center">
                 Access is restricted to Sybella Systems team members only.<br />
                 Contact your administrator if you need access.
-              </p>
+              </p> 
+              <p> <a href = "https://sybellasystems.co.rw/privacy-policy">Privacy Policy</a>  <a href = "https://sybellasystems.co.rw/terms-service">Terms of service</a></p>
             </div>
           </div>
         </div>
