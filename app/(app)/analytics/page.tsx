@@ -22,6 +22,7 @@ export default function AnalyticsPage() {
     reportTrend: [] as any[],
     reportHealthTrend: [] as any[],
     financeSummary: [] as any[],
+    externalIntegrationCount: 0,
     reportStats: {
       totalReports: 0,
       approvedReports: 0,
@@ -45,12 +46,14 @@ export default function AnalyticsPage() {
       { data: profiles },
       { data: reports },
       { data: finance },
+      { data: integrations },
     ] = await Promise.all([
       supabase.from('projects').select('*'),
       supabase.from('tasks').select('*'),
       supabase.from('profiles').select('id, role, is_active'),
       supabase.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id').order('report_date', { ascending: true }),
       supabase.from('financial_records').select('type, amount, date'),
+      supabase.from('project_integrations').select('project_id'),
     ]);
 
     const projectsData = projects ?? [];
@@ -58,6 +61,7 @@ export default function AnalyticsPage() {
     const profilesData = profiles ?? [];
     const reportsData = reports ?? [];
     const financeData = finance ?? [];
+    const integrationsData = integrations ?? [];
 
     // Project by status
     const projectStatusMap: Record<string, number> = {};
@@ -188,13 +192,14 @@ export default function AnalyticsPage() {
       return sum;
     }, 0);
 
-    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary, reportStats });
+    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary, reportStats, externalIntegrationCount: integrationsData.length });
     setLoading(false);
   };
 
   const totalProjects = data.projectStats.reduce((s, d) => s + d.value, 0);
   const totalTasks = data.taskStats.reduce((s, d) => s + d.value, 0);
   const totalMembers = data.roleDistribution.reduce((sum, group) => sum + group.count, 0);
+  const totalIntegrations = data.externalIntegrationCount ?? 0;
   const completedTasks = data.taskStats.find((d) => d.name.toLowerCase() === 'done')?.value || 0;
   const completionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const totalReports = data.reportStats.totalReports;
@@ -212,7 +217,7 @@ export default function AnalyticsPage() {
           {[
             { label: 'Total Projects', value: totalProjects, icon: FolderKanban, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: 'Total Tasks', value: totalTasks, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-            { label: 'Average Health', value: `${averageHealth}%`, icon: Activity, color: 'text-sky-600', bg: 'bg-sky-50' },
+            { label: 'Live Integrations', value: totalIntegrations, icon: Activity, color: 'text-sky-600', bg: 'bg-sky-50' },
             { label: 'Team Members', value: totalMembers, icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
             { label: 'Task Completion', value: `${completionRate}%`, icon: TrendingUp, color: 'text-teal-600', bg: 'bg-teal-50' },
             { label: 'Avg Confidence', value: `${averageConfidence}%`, icon: DollarSign, color: 'text-violet-600', bg: 'bg-violet-50' },
