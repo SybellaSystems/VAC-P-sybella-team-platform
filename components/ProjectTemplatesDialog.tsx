@@ -44,8 +44,9 @@ export function ProjectTemplatesDialog({
   const loadTemplates = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await supabase!
         .from('project_templates')
+
         .select('*')
         .eq('is_public', true)
         .order('created_at', { ascending: false });
@@ -267,8 +268,9 @@ export function ProjectTemplateGallery() {
 
   const loadTemplates = async () => {
     try {
-      const { data } = await supabase
+      const { data } = await supabase!
         .from('project_templates')
+
         .select('*')
         .eq('is_public', true)
         .order('created_at', { ascending: false });

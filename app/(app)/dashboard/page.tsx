@@ -1,5 +1,6 @@
 'use client';
 
+
 import { useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
@@ -40,6 +41,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     async function load() {
+      if (!supabase) return;
       const [
         { count: teamCount },
         { data: projects },
@@ -122,7 +124,10 @@ export default function DashboardPage() {
 
     load();
 
+    if (!supabase) return () => {};
+
     const channel = supabase
+
       .channel('financial-live')
       .on(
         'postgres_changes',
@@ -138,7 +143,7 @@ export default function DashboardPage() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase?.removeChannel(channel);
     };
   }, []);
 

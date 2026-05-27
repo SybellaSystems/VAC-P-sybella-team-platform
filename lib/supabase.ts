@@ -21,16 +21,21 @@ const supabaseUrl =
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY;
 
-if (!supabaseUrl) {
-  throw new Error(
-    'Missing required environment variable: NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL). Set it in your environment (or .env) before running the app.'
-  );
-}
-if (!supabaseAnonKey) {
-  throw new Error(
-    'Missing required environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_ANON_KEY). Set it in your environment (or .env) before running the app.'
-  );
+// Don’t hard-crash the entire Next build during local compilation.
+// If Supabase is not configured, server handlers can return 500 with a clear message
+// when they first need to use the client.
+export const supabase = (() => {
+  if (!supabaseUrl || !supabaseAnonKey) return null;
+  return createClient(supabaseUrl, supabaseAnonKey);
+})();
+
+export function getSupabaseOrThrow() {
+  if (!supabase) {
+    throw new Error(
+      'Supabase is not configured. Missing NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY (or SUPABASE_URL/SUPABASE_ANON_KEY).'
+    );
+  }
+  return supabase;
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

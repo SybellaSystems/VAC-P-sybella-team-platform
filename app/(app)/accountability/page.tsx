@@ -70,10 +70,11 @@ export default function AccountabilityPage() {
   const loadAll = async () => {
     setLoading(true);
     const [reportsResponse, profilesResponse, tasksResponse, projectsResponse] = await Promise.all([
-      supabase.from('accountability_reports').select('*').order('report_date', { ascending: false }).limit(100),
-      supabase.from('profiles').select('*'),
-      supabase.from('tasks').select('*'),
-      supabase.from('projects').select('*'),
+      supabase!.from('accountability_reports').select('*').order('report_date', { ascending: false }).limit(100),
+      supabase!.from('profiles').select('*'),
+      supabase!.from('tasks').select('*'),
+      supabase!.from('projects').select('*'),
+
     ]);
     const reps = reportsResponse.data;
     const profs = profilesResponse.data;
@@ -107,7 +108,7 @@ export default function AccountabilityPage() {
       .map((field) => [field.id, Number(form[field.id] ?? 0)]),
     );
 
-    const insertResponse = await supabase.from('accountability_reports').insert({
+    const insertResponse = await supabase!.from('accountability_reports').insert({
       member_id: profile.id,
       report_date: new Date().toISOString().split('T')[0],
       report_type: form.report_type || 'daily',
@@ -147,8 +148,9 @@ export default function AccountabilityPage() {
 
   const handleReview = async (id: string, status: AccountabilityReport['status']) => {
     if (!profile) return;
-    const { error } = await supabase
+    const { error } = await supabase!
       .from('accountability_reports')
+
       .update({ status, reviewed_by: profile.id })
       .eq('id', id);
 

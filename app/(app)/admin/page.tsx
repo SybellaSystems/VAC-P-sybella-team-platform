@@ -39,7 +39,8 @@ export default function AdminPage() {
   }, [isAdmin]);
 
   const loadMembers = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('full_name');
+    const { data } = await supabase!.from('profiles').select('*').order('full_name');
+
     setMembers((data as Profile[]) || []);
     setLoading(false);
   };
@@ -52,7 +53,8 @@ export default function AdminPage() {
     setSaving(true);
     setError('');
 
-    const { data, error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase!.auth.signUp({
+
       email: inviteForm.email,
       password: inviteForm.password,
       options: {
@@ -72,14 +74,16 @@ export default function AdminPage() {
   };
 
   const toggleActive = async (id: string, current: boolean) => {
-    await supabase.from('profiles').update({ is_active: !current }).eq('id', id);
+    await supabase!.from('profiles').update({ is_active: !current }).eq('id', id);
+
 
     // Avoid updater-callback typing issues during build by refetching.
     await loadMembers();
   };
 
   const updateRole = async (id: string, role: Role) => {
-    await supabase.from('profiles').update({ role }).eq('id', id);
+    await supabase!.from('profiles').update({ role }).eq('id', id);
+
     await loadMembers();
   };
 

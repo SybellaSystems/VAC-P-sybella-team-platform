@@ -61,7 +61,7 @@ export default function ApprovalsPage() {
       let leaveRows: LeaveRow[] = [];
       let stepRows: StepRow[] = [];
       if (showLeave) {
-        const { data } = await supabase
+        const { data } = await supabase!
           .from('leave_requests')
           .select('*')
           .eq('status', 'PENDING')
@@ -73,7 +73,7 @@ export default function ApprovalsPage() {
         setLeaves([]);
       }
       if (showBudget) {
-        const { data } = await supabase
+        const { data } = await supabase!
           .from('approval_workflows')
           .select('*, budget_proposals(title, amount, currency)')
           .eq('status', 'PENDING')
@@ -85,7 +85,7 @@ export default function ApprovalsPage() {
         setSteps([]);
       }
 
-      const { data: profs } = await supabase.from('profiles').select('id, full_name');
+      const { data: profs } = await supabase!.from('profiles').select('id, full_name');
       const map: Record<string, string> = {};
       (profs as { id: string; full_name: string }[] | null)?.forEach((p) => {
         map[p.id] = p.full_name;

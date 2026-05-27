@@ -46,16 +46,18 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
   }, [taskId, projectId]);
 
   const loadTeamMembers = async () => {
-    const { data: assignments } = await supabase
+    const { data: assignments } = await supabase!
       .from('project_assignments')
+
       .select('member_id')
       .eq('project_id', projectId);
 
     if (!assignments) return;
 
     const memberIds = assignments.map(a => a.member_id);
-    const { data: profiles } = await supabase
+    const { data: profiles } = await supabase!
       .from('profiles')
+
       .select('*')
       .in('id', memberIds);
 
@@ -64,8 +66,9 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
 
   const loadTask = async () => {
     if (!taskId) return;
-    const { data } = await supabase
+    const { data } = await supabase!
       .from('tasks')
+
       .select('*')
       .eq('id', taskId)
       .single();
@@ -95,15 +98,17 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
       };
 
       if (taskId) {
-        const { error } = await supabase
+        const { error } = await supabase!
           .from('tasks')
+
           .update(payload)
           .eq('id', taskId);
 
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await supabase!
           .from('tasks')
+
           .insert({
             ...payload,
             project_id: projectId,

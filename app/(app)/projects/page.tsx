@@ -48,6 +48,8 @@ const emptyForm = (): Partial<Project> => ({
 
 export default function ProjectsPage() {
   const { profile } = useAuth();
+  if (!supabase) return null;
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -102,17 +104,24 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     loadProjects();
-    supabase.from('profiles').select('*').then(({ data }) => setMembers((data as Profile[]) || []));
+    supabase!.from('profiles').select('*').then(({ data }) => setMembers((data as Profile[]) || []));
+
+
   }, []);
 
+
   const loadProjects = async () => {
-    const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+    const result = await supabase!.from('projects').select('*').order('created_at', { ascending: false });
+    const { data } = result;
+
     setProjects((data as Project[]) || []);
+
     setLoading(false);
   };
 
   const loadTasks = async (projectId: string) => {
-    const { data } = await supabase.from('tasks').select('*, profiles(full_name)').eq('project_id', projectId).order('created_at', { ascending: false });
+    const { data } = await supabase!.from('tasks').select('*, profiles(full_name)').eq('project_id', projectId).order('created_at', { ascending: false });
+
     const list = data || [];
     setTasks(list);
     const ids = list.map((t: { id: string }) => t.id);
@@ -120,7 +129,8 @@ export default function ProjectsPage() {
       setSubtasksByTaskId({});
       return;
     }
-    const { data: subs } = await supabase.from('task_subtasks').select('*').in('task_id', ids);
+    const { data: subs } = await supabase!.from('task_subtasks').select('*').in('task_id', ids);
+
     const map: Record<string, TaskSubtask[]> = {};
     (subs as TaskSubtask[] | null)?.forEach((s) => {
       if (!map[s.task_id]) map[s.task_id] = [];
@@ -133,7 +143,8 @@ export default function ProjectsPage() {
   };
 
   const loadFeatureLinks = async (projectId: string) => {
-    const { data } = await supabase.from('project_feature_links').select('*').eq('project_id', projectId);
+    const { data } = await supabase!.from('project_feature_links').select('*').eq('project_id', projectId);
+
     const links = (data as ProjectFeatureLink[]) || [];
     setFeatureLinks(links);
     const labels: Record<string, string> = {};
@@ -147,31 +158,36 @@ export default function ProjectsPage() {
     links.forEach((l) => buckets[l.feature_type].push(l.feature_id));
     const uniq = (xs: string[]) => Array.from(new Set(xs));
     if (buckets.customer.length) {
-      const { data: rows } = await supabase.from('customers').select('id,name').in('id', uniq(buckets.customer));
+      const { data: rows } = await supabase!.from('customers').select('id,name').in('id', uniq(buckets.customer));
+
       rows?.forEach((r: { id: string; name: string }) => {
         labels[`customer:${r.id}`] = r.name;
       });
     }
     if (buckets.financial_record.length) {
-      const { data: rows } = await supabase.from('financial_records').select('id,title').in('id', uniq(buckets.financial_record));
+      const { data: rows } = await supabase!.from('financial_records').select('id,title').in('id', uniq(buckets.financial_record));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`financial_record:${r.id}`] = r.title;
       });
     }
     if (buckets.budget_proposal.length) {
-      const { data: rows } = await supabase.from('budget_proposals').select('id,title').in('id', uniq(buckets.budget_proposal));
+      const { data: rows } = await supabase!.from('budget_proposals').select('id,title').in('id', uniq(buckets.budget_proposal));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`budget_proposal:${r.id}`] = r.title;
       });
     }
     if (buckets.wiki_page.length) {
-      const { data: rows } = await supabase.from('wiki_pages').select('id,title').in('id', uniq(buckets.wiki_page));
+      const { data: rows } = await supabase!.from('wiki_pages').select('id,title').in('id', uniq(buckets.wiki_page));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`wiki_page:${r.id}`] = r.title;
       });
     }
     if (buckets.repo_link.length) {
-      const { data: rows } = await supabase.from('repo_links').select('id,title').in('id', uniq(buckets.repo_link));
+      const { data: rows } = await supabase!.from('repo_links').select('id,title').in('id', uniq(buckets.repo_link));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`repo_link:${r.id}`] = r.title;
       });
@@ -221,11 +237,12 @@ export default function ProjectsPage() {
     let cancelled = false;
     (async () => {
       const [cust, bp, wiki, repo, fin] = await Promise.all([
-        supabase.from('customers').select('id,name').order('name'),
-        supabase.from('budget_proposals').select('id,title').order('created_at', { ascending: false }).limit(80),
-        supabase.from('wiki_pages').select('id,title').order('title').limit(80),
-        supabase.from('repo_links').select('id,title').order('title').limit(80),
-        supabase.from('financial_records').select('id,title').order('created_at', { ascending: false }).limit(80),
+        supabase!.from('customers').select('id,name').order('name'),
+        supabase!.from('budget_proposals').select('id,title').order('created_at', { ascending: false }).limit(80),
+        supabase!.from('wiki_pages').select('id,title').order('title').limit(80),
+        supabase!.from('repo_links').select('id,title').order('title').limit(80),
+        supabase!.from('financial_records').select('id,title').order('created_at', { ascending: false }).limit(80),
+
       ]);
       if (cancelled) return;
       setPickCustomers((cust.data as { id: string; name: string }[]) || []);
@@ -255,7 +272,8 @@ export default function ProjectsPage() {
 
   const addFeatureLink = async () => {
     if (!selectedProject?.id || !linkPickId.trim()) return;
-    await supabase.from('project_feature_links').insert({
+    await supabase!.from('project_feature_links').insert({
+
       project_id: selectedProject.id,
       feature_type: linkPickType,
       feature_id: linkPickId.trim(),
@@ -305,7 +323,8 @@ export default function ProjectsPage() {
     const title = (subtaskDraft[taskId] || '').trim();
     if (!title || !selectedProject) return;
     const ord = (subtasksByTaskId[taskId]?.length ?? 0);
-    await supabase.from('task_subtasks').insert({
+    await supabase!.from('task_subtasks').insert({
+
       task_id: taskId,
       title,
       sort_order: ord,
@@ -344,7 +363,8 @@ export default function ProjectsPage() {
   const handleCreateProject = async () => {
     if (!form.name?.trim()) return;
     setSaving(true);
-    await supabase.from('projects').insert({ ...form, created_by: profile?.id });
+    await supabase!.from('projects').insert({ ...form, created_by: profile?.id });
+
     await loadProjects();
     setSaving(false);
     setShowModal(false);
@@ -352,7 +372,8 @@ export default function ProjectsPage() {
   };
 
   const handleStatusUpdate = async (id: string, status: Project['status']) => {
-    await supabase.from('projects').update({ status }).eq('id', id);
+    await supabase!.from('projects').update({ status }).eq('id', id);
+
     setProjects(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     if (selectedProject?.id === id) setSelectedProject(prev => prev ? { ...prev, status } : null);
   };

@@ -35,7 +35,7 @@ export default function AuditLogsPage() {
     let mounted = true;
     const load = async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data } = await supabase!
         .from('audit_logs')
         .select('id, event_type, entity_type, entity_id, action, details, actor_role, created_at')
         .order('created_at', { ascending: false })

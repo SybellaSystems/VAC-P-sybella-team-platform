@@ -34,6 +34,11 @@ export default function CustomersPage() {
   useEffect(() => { loadCustomers(); }, []);
 
   const loadCustomers = async () => {
+    if (!supabase) {
+      setCustomers([]);
+      setLoading(false);
+      return;
+    }
     const { data } = await supabase.from('customers').select('*').order('created_at', { ascending: false });
     setCustomers((data as Customer[]) || []);
     setLoading(false);
@@ -41,6 +46,7 @@ export default function CustomersPage() {
 
   const handleCreate = async () => {
     if (!form.name?.trim()) return;
+    if (!supabase) return;
     setSaving(true);
     await supabase.from('customers').insert({ ...form, created_by: profile?.id });
     await loadCustomers();
