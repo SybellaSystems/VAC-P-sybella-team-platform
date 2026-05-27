@@ -22,7 +22,11 @@ import { ProjectAnalyticsDashboard } from '@/components/ProjectAnalyticsDashboar
 import { TaskAssignmentForm } from '@/components/TaskAssignmentForm';
 import { parseISO } from 'date-fns';
 
+// Project creation modal modes
+type CreateProjectMode = 'manual' | 'template' | 'import';
+
 const statusColors: Record<string, string> = {
+
   planning: 'bg-blue-100 text-blue-700',
   active: 'bg-emerald-100 text-emerald-700',
   on_hold: 'bg-amber-100 text-amber-700',
@@ -50,8 +54,11 @@ export default function ProjectsPage() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showModal, setShowModal] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateProjectMode>('manual');
+
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
@@ -523,64 +530,169 @@ export default function ProjectsPage() {
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button>
             </div>
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Project Name *</label>
-                <input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Customer Portal v2"
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('manual')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'manual' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('template')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'template' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  From Template
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('import')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'import' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  Import Data
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
-                <textarea value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })}
-                  rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
-                  <select value={form.status || 'planning'} onChange={e => setForm({ ...form, status: e.target.value as Project['status'] })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                    {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                  </select>
+
+              {createMode === 'manual' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Project Name *</label>
+                    <input
+                      value={form.name || ''}
+                      onChange={e => setForm({ ...form, name: e.target.value })}
+                      placeholder="e.g. Customer Portal v2"
+                      className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
+                    <textarea
+                      value={form.description || ''}
+                      onChange={e => setForm({ ...form, description: e.target.value })}
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
+                      <select
+                        value={form.status || 'planning'}
+                        onChange={e => setForm({ ...form, status: e.target.value as Project['status'] })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
+                      <select
+                        value={form.priority || 'medium'}
+                        onChange={e => setForm({ ...form, priority: e.target.value as Project['priority'] })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Budget ($)</label>
+                      <input
+                        type="number"
+                        value={form.budget || 0}
+                        onChange={e => setForm({ ...form, budget: Number(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Progress (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={form.progress || 0}
+                        onChange={e => setForm({ ...form, progress: Number(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={form.start_date || ''}
+                        onChange={e => setForm({ ...form, start_date: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={form.end_date || ''}
+                        onChange={e => setForm({ ...form, end_date: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-5">
+                    <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
+                    <button
+                      onClick={handleCreateProject}
+                      disabled={saving}
+                      className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {saving ? 'Creating...' : 'Create Project'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {createMode === 'template' && (
+                <div className="pt-1">
+                  <ProjectTemplatesDialog
+                    open={true}
+                    onOpenChange={(open) => {
+                      if (!open) setShowModal(false);
+                    }}
+                    onCreateFromTemplate={async () => {
+                      await loadProjects();
+                      setShowModal(false);
+                      setForm(emptyForm());
+                    }}
+                  />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
-                  <select value={form.priority || 'medium'} onChange={e => setForm({ ...form, priority: e.target.value as Project['priority'] })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                    {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+              )}
+
+              {createMode === 'import' && (
+                <div className="pt-1">
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Import requires an existing project. Create a project first, then use the import wizard from that project (or extend this flow).
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted"
+                      onClick={() => {
+                        setCreateMode('manual');
+                      }}
+                    >
+                      Create Project first
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                      onClick={() => setShowModal(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Budget ($)</label>
-                  <input type="number" value={form.budget || 0} onChange={e => setForm({ ...form, budget: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Progress (%)</label>
-                  <input type="number" min="0" max="100" value={form.progress || 0} onChange={e => setForm({ ...form, progress: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label>
-                  <input type="date" value={form.start_date || ''} onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label>
-                  <input type="date" value={form.end_date || ''} onChange={e => setForm({ ...form, end_date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
-              <button onClick={handleCreateProject} disabled={saving}
-                className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60">
-                {saving ? 'Creating...' : 'Create Project'}
-              </button>
+              )}
             </div>
           </div>
         </div>
@@ -644,7 +756,15 @@ export default function ProjectsPage() {
                         return (
                           <div key={task.id}>
                             <div className="flex justify-between text-[10px] text-muted-foreground mb-1 gap-2">
-                              <span className="truncate flex-1">{task.title}</span>
+                                <div className="flex flex-col flex-1 min-w-0">
+                                  <span className="truncate">{task.title}</span>
+                                  {task.due_date && (
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">
+                                      Due: {new Date(task.due_date).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+
                               <span className="flex-shrink-0">{task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}</span>
                             </div>
                             <div className="relative h-5 bg-muted rounded-full overflow-hidden">
