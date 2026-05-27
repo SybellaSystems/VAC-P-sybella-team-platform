@@ -56,6 +56,10 @@ export default function ProjectsPage() {
   const [showModal, setShowModal] = useState(false);
   const [createMode, setCreateMode] = useState<CreateProjectMode>('manual');
 
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+
+
+
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
 
@@ -524,6 +528,7 @@ export default function ProjectsPage() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-foreground">Create New Project</h2>
@@ -657,31 +662,33 @@ export default function ProjectsPage() {
                   <ProjectTemplatesDialog
                     open={true}
                     onOpenChange={(open) => {
-                      if (!open) setShowModal(false);
+                      if (!open) {
+                        setShowModal(false);
+                      }
                     }}
                     onCreateFromTemplate={async () => {
                       await loadProjects();
-                      setShowModal(false);
                       setForm(emptyForm());
+                      setSaving(false);
+                      setCreateMode('manual');
                     }}
                   />
                 </div>
               )}
 
+
               {createMode === 'import' && (
                 <div className="pt-1">
                   <p className="text-xs text-muted-foreground mb-3">
-                    Import requires an existing project. Create a project first, then use the import wizard from that project (or extend this flow).
+                    Import data directly from the documentation/template. If no project exists yet, we’ll create one first and then pull/import the rows.
                   </p>
                   <div className="flex gap-3">
                     <button
                       type="button"
                       className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted"
-                      onClick={() => {
-                        setCreateMode('manual');
-                      }}
+                      onClick={() => setCreateMode('manual')}
                     >
-                      Create Project first
+                      Go back
                     </button>
                     <button
                       type="button"
@@ -693,13 +700,28 @@ export default function ProjectsPage() {
                   </div>
                 </div>
               )}
+
+
             </div>
           </div>
         </div>
       )}
 
+      {/* Task modal */}
+      {selectedProject && taskModalOpen && (
+        <TaskAssignmentForm
+          projectId={selectedProject.id}
+          onCancel={() => setTaskModalOpen(false)}
+          onComplete={async () => {
+            await loadTasks(selectedProject.id);
+            setTaskModalOpen(false);
+          }}
+        />
+      )}
+
       {/* Project Detail Drawer */}
       {selectedProject && (
+
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedProject(null)} />
           <div className="relative bg-white w-full max-w-xl h-full overflow-y-auto shadow-2xl">
@@ -785,6 +807,26 @@ export default function ProjectsPage() {
                   <Link2 size={14} className="text-muted-foreground" />
                   <p className="text-sm font-semibold text-foreground">Linked records</p>
                 </div>
+
+                {canManage && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setCreateMode('import')}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Import Data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateMode('template')}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Templates
+                    </button>
+                  </div>
+                )}
+
                 {canManage && (
                   <div className="flex flex-wrap gap-2 mb-3 items-center">
                     <select
@@ -823,6 +865,7 @@ export default function ProjectsPage() {
                     </button>
                   </div>
                 )}
+
                 {featureLinks.length === 0 ? (
                   <p className="text-xs text-muted-foreground mb-2">No cross-links yet.</p>
                 ) : (
@@ -835,7 +878,42 @@ export default function ProjectsPage() {
                     ))}
                   </ul>
                 )}
+
+                {canManage && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">Quick actions</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateMode('import');
+                      setShowModal(true);
+                    }}
+                    className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground"
+                  >
+                    Import Data (wizard)
+                  </button>
+
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateMode('template');
+                            setShowModal(true);
+                          }}
+                          className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground"
+                        >
+                          Create from Template
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
               </div>
+
 
               <div className="rounded-3xl border border-border bg-muted/50 p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -987,8 +1065,31 @@ export default function ProjectsPage() {
                 </div>
               )}
 
+              {/* Analytics + task creation */}
               <div>
-                <p className="text-sm font-semibold text-foreground mb-3">Tasks</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 size={14} className="text-muted-foreground" />
+                  <p className="text-sm font-semibold text-foreground">Analytics</p>
+                </div>
+                <ProjectAnalyticsDashboard projectId={selectedProject.id} />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <p className="text-sm font-semibold text-foreground">Tasks</p>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setTaskModalOpen(true)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Create task
+                    </button>
+                  )}
+
+
+                </div>
+
                 {tasks.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No tasks yet</p>
                 ) : (

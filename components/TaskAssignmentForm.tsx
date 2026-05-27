@@ -78,21 +78,36 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
   const handleSave = async () => {
     setLoading(true);
     try {
+      // Avoid sending non-column fields to Supabase (can cause silent failures).
+      const payload = {
+        title: task.title,
+        description: task.description,
+        status: task.status,
+        priority: task.priority,
+        assigned_to: task.assigned_to,
+        due_date: task.due_date,
+        completed_at: task.completed_at,
+        estimated_hours: task.estimated_hours,
+        actual_hours: task.actual_hours,
+        message_context: task.message_context,
+        parent_task_id: (task as any).parent_task_id,
+        visible_in_chat: task.visible_in_chat,
+      };
+
       if (taskId) {
-        // Update existing task
         const { error } = await supabase
           .from('tasks')
-          .update(task)
+          .update(payload)
           .eq('id', taskId);
 
         if (error) throw error;
       } else {
-        // Create new task
         const { data, error } = await supabase
           .from('tasks')
           .insert({
-            ...task,
+            ...payload,
             project_id: projectId,
+            created_by: (task as any).created_by,
           })
           .select()
           .single();
@@ -218,11 +233,11 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="dueDate" className="text-sm font-medium">Due Date</Label>
-                <Input
+                  <Input
                   id="dueDate"
                   type="date"
-                  value={task.due_date ? task.due_date.toString().split('T')[0] : ''}
-                  onChange={(e) => setTask({ ...task, due_date: e.target.value })}
+                  value={typeof task.due_date === 'string' ? task.due_date : ''}
+                  onChange={(e) => setTask({ ...task, due_date: e.target.value ? e.target.value : null })}
                   className="mt-1"
                 />
               </div>
