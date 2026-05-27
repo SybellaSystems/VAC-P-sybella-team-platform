@@ -564,7 +564,7 @@ function generateFinancialTrackerSheet(): ExcelSheet {
       },
       {
         cells: [
-          { value: 'Net Profit', bold: true, bgColor: '#DBEAFE', bold: true },
+          { value: 'Net Profit', bold: true, bgColor: '#DBEAFE' },
           { value: '=B10-B11', type: 'formula', bold: true, bgColor: '#DBEAFE' },
         ],
       },
