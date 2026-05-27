@@ -35,8 +35,10 @@ export default function LeavePage() {
   const [reason, setReason] = useState('');
 
   const load = async () => {
+    if (!supabase) return;
     setLoading(true);
     const { data } = await supabase
+
       .from('leave_requests')
       .select('*')
       .order('requested_at', { ascending: false })
@@ -63,7 +65,9 @@ export default function LeavePage() {
   const canApprove = canApproveLeave(profile?.role);
 
   const submitRequest = async () => {
+    if (!supabase) return;
     if (!profile || !startDate || !endDate) return;
+
     setSaving(true);
     const { data, error } = await supabase
       .from('leave_requests')
@@ -93,7 +97,9 @@ export default function LeavePage() {
   };
 
   const setStatus = async (row: LeaveRequest, status: string) => {
+    if (!supabase) return;
     const { error } = await supabase
+
       .from('leave_requests')
       .update({
         status,

@@ -23,12 +23,18 @@ export default function MyWorkPage() {
       return;
     }
     void (async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+
       const { data } = await supabase
         .from('tasks')
         .select('*, projects(name)')
         .eq('assigned_to', profile.id)
         .order('updated_at', { ascending: false })
         .limit(40);
+
       setTasks((data as (Task & { projects?: { name: string } | null })[]) ?? []);
       setLoading(false);
     })();

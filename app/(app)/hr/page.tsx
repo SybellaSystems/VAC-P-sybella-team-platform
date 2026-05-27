@@ -32,12 +32,14 @@ export default function HrHubPage() {
   const canManagePipeline = profile?.role && ['admin', 'director', 'hr', 'manager'].includes(profile.role);
 
   const load = async () => {
+    if (!supabase) return;
     const [c, r, t, m] = await Promise.all([
       supabase.from('hr_candidates').select('*').order('created_at', { ascending: false }).limit(80),
       supabase.from('hr_performance_reviews').select('*').order('updated_at', { ascending: false }).limit(50),
       supabase.from('hr_onboarding_tasks').select('*').order('due_date', { ascending: true }).limit(80),
       supabase.from('profiles').select('*').order('full_name').limit(200),
     ]);
+
     setCandidates((c.data as HrCandidate[]) ?? []);
     setReviews((r.data as HrPerformanceReview[]) ?? []);
     setTasks((t.data as HrOnboardingTask[]) ?? []);
@@ -56,8 +58,10 @@ export default function HrHubPage() {
   }, [profile?.role]);
 
   const saveCandidate = async () => {
+    if (!supabase) return;
     if (!profile?.id || !cForm.full_name.trim()) return;
     const { data } = await supabase
+
       .from('hr_candidates')
       .insert({
         full_name: cForm.full_name.trim(),
@@ -77,14 +81,18 @@ export default function HrHubPage() {
   };
 
   const updateStage = async (id: string, stage: HrCandidate['stage']) => {
+    if (!supabase) return;
     await supabase.from('hr_candidates').update({ stage, updated_at: new Date().toISOString() }).eq('id', id);
     await load();
   };
 
+
   const toggleOnboarding = async (id: string, done: boolean) => {
+    if (!supabase) return;
     await supabase.from('hr_onboarding_tasks').update({ is_done: done, updated_at: new Date().toISOString() }).eq('id', id);
     await load();
   };
+
 
   const memberName = (id: string) => members.find((m) => m.id === id)?.full_name ?? id.slice(0, 8);
 

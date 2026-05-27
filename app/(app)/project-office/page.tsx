@@ -22,6 +22,11 @@ export default function ProjectOfficePage() {
       return;
     }
     void (async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+
       const [{ data: projs }, { data: tasks }] = await Promise.all([
         supabase.from('projects').select('*').order('updated_at', { ascending: false }).limit(30),
         supabase.from('tasks').select('id, status').limit(500),
