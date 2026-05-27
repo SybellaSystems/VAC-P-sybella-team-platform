@@ -9,6 +9,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { parseCSV, validateImportData, mapAndImportColumns, createCustomFieldsFromHeaders } from '@/lib/project-import-export';
 import { Upload, AlertCircle, CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export interface ProjectImportWizardProps {
   projectId: string;
@@ -19,6 +20,7 @@ export interface ProjectImportWizardProps {
 type WizardStep = 'upload' | 'preview' | 'mapping' | 'confirm';
 
 export function ProjectImportWizard({ projectId, onComplete, onCancel }: ProjectImportWizardProps) {
+  const { profile } = useAuth();
   const [step, setStep] = useState<WizardStep>('upload');
   const [file, setFile] = useState<File | null>(null);
   const [csvData, setCsvData] = useState<string[][]>([]);
@@ -38,15 +40,26 @@ export function ProjectImportWizard({ projectId, onComplete, onCancel }: Project
     setValidationErrors([]);
 
     try {
-      // Check file type
-      if (!['text/csv', 'application/vnd.ms-excel'].includes(selectedFile.type)) {
-        throw new Error('Please select a CSV file');
+      const isCsv =
+        selectedFile.type === 'text/csv' || selectedFile.name.toLowerCase().endsWith('.csv');
+
+      const isXlsx =
+        selectedFile.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        selectedFile.name.toLowerCase().endsWith('.xlsx');
+
+      if (!isCsv && !isXlsx) {
+        throw new Error('Please select a CSV or XLSX file');
       }
 
+      if (!isCsv && isXlsx) {
+        // XLSX parsing will be enabled in the next step
+        throw new Error('XLSX parsing not yet enabled');
+      }
+
+      // CSV parsing
       const text = await selectedFile.text();
       const data = parseCSV(text);
 
-      // Validate data
       const validation = validateImportData(data);
       if (!validation.valid) {
         setValidationErrors(validation.errors);
@@ -73,7 +86,8 @@ export function ProjectImportWizard({ projectId, onComplete, onCancel }: Project
   const handleImport = async () => {
     setIsLoading(true);
     try {
-      const userId = 'current-user-id'; // TODO: Get from auth context
+      const userId = profile?.id;
+      if (!userId) throw new Error('User profile not loaded. Please sign in again.');
       
       // Create custom fields from headers
       await createCustomFieldsFromHeaders(projectId, headers);

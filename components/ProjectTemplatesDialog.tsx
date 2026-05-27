@@ -12,6 +12,7 @@ import { createProjectFromTemplate } from '@/lib/project-import-export';
 import type { ProjectTemplate, ExtendedProject } from '@/lib/database.types';
 import { Zap, Copy, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface ProjectTemplatesDialogProps {
   open: boolean;
@@ -26,6 +27,7 @@ export function ProjectTemplatesDialog({
   onSelect,
   onCreateFromTemplate 
 }: ProjectTemplatesDialogProps) {
+  const { profile } = useAuth();
   const [templates, setTemplates] = useState<ProjectTemplate[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<ProjectTemplate | null>(null);
@@ -66,8 +68,9 @@ export function ProjectTemplatesDialog({
 
     setCreating(true);
     try {
-      const userId = 'current-user-id'; // TODO: Get from auth context
-      
+      const userId = profile?.id;
+      if (!userId) throw new Error('User profile not loaded. Please sign in again.');
+
       const newProject = await createProjectFromTemplate(
         selectedTemplate.id,
         {

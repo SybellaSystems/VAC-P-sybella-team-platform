@@ -15,7 +15,11 @@ import type {
 } from '@/lib/database.types';
 import { createProjectIntegration, fetchProjectIntegrations } from '@/lib/integrations';
 import { logAudit } from '@/lib/audit';
-import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2 } from 'lucide-react';
+import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2, Upload, Copy, BarChart3 } from 'lucide-react';
+import { ProjectImportWizard } from '@/components/ProjectImportWizard';
+import { ProjectTemplatesDialog } from '@/components/ProjectTemplatesDialog';
+import { ProjectAnalyticsDashboard } from '@/components/ProjectAnalyticsDashboard';
+import { TaskAssignmentForm } from '@/components/TaskAssignmentForm';
 import { parseISO } from 'date-fns';
 
 const statusColors: Record<string, string> = {
