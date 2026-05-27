@@ -307,8 +307,101 @@ export type ProjectAssignment = {
   id: string;
   project_id: string;
   member_id: string;
-  role_in_project: string;
+  role_in_project: 'viewer' | 'editor' | 'admin';
   assigned_at: string;
+  can_edit_tasks?: boolean;
+  can_edit_project?: boolean;
+  can_manage_members?: boolean;
+  can_view_analytics?: boolean;
+  can_import_export?: boolean;
+};
+
+export type ProjectCustomField = {
+  id: string;
+  project_id: string;
+  field_name: string;
+  field_type: 'text' | 'number' | 'date' | 'select' | 'checkbox' | 'currency';
+  field_label: string;
+  is_visible: boolean;
+  sort_order: number;
+  options?: any[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectRow = {
+  id: string;
+  project_id: string;
+  data: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+};
+
+export type TaskMessage = {
+  id: string;
+  task_id: string;
+  channel_id?: string;
+  message_text: string;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProjectAnalytic = {
+  id: string;
+  project_id: string;
+  metric_name: string;
+  metric_value: number;
+  metric_date: string;
+  dimension_1?: string;
+  dimension_2?: string;
+  created_at: string;
+};
+
+export type ImportJob = {
+  id: string;
+  project_id: string;
+  file_name: string;
+  file_type: 'csv' | 'xlsx';
+  total_rows?: number;
+  imported_rows: number;
+  failed_rows: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  error_message?: string;
+  created_by: string;
+  created_at: string;
+  completed_at?: string;
+};
+
+export type ProjectTemplate = {
+  id: string;
+  name: string;
+  description?: string;
+  category?: 'marketing' | 'development' | 'sales' | 'operations' | 'hr' | 'finance' | 'general';
+  structure: Record<string, any>;
+  custom_fields?: ProjectCustomField[];
+  is_public: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ExtendedProject = Project & {
+  import_source?: 'manual' | 'csv' | 'excel' | 'api' | null;
+  source_file_name?: string;
+  raw_import_data?: Record<string, any>;
+  column_mapping?: Record<string, any>;
+  is_template?: boolean;
+  template_name?: string;
+  category?: 'marketing' | 'development' | 'sales' | 'operations' | 'hr' | 'finance' | 'general';
+};
+
+export type ExtendedTask = Task & {
+  message_context?: string;
+  parent_task_id?: string;
+  estimated_hours?: number;
+  actual_hours?: number;
+  visible_in_chat?: boolean;
 };
 
 // Supabase Database type - uses any for simplicity with the supabase-js client
