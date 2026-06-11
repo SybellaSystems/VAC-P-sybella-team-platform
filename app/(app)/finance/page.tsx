@@ -44,15 +44,19 @@ export default function FinancePage() {
   useEffect(() => { loadRecords(); }, []);
 
   const loadRecords = async () => {
+    if (!supabase) return;
     const { data } = await supabase.from('financial_records').select('*').order('date', { ascending: false });
+
     setRecords((data as FinancialRecord[]) || []);
     setLoading(false);
   };
 
   const handleCreate = async () => {
+    if (!supabase) return;
     if (!form.title?.trim()) return;
     setSaving(true);
     await supabase.from('financial_records').insert({ ...form, created_by: profile?.id });
+
     await loadRecords();
     setSaving(false);
     setShowModal(false);

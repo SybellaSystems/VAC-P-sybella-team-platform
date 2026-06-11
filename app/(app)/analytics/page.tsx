@@ -48,12 +48,13 @@ export default function AnalyticsPage() {
       { data: finance },
       { data: integrations },
     ] = await Promise.all([
-      supabase.from('projects').select('*'),
-      supabase.from('tasks').select('*'),
-      supabase.from('profiles').select('id, role, is_active'),
-      supabase.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id').order('report_date', { ascending: true }),
-      supabase.from('financial_records').select('type, amount, date'),
-      supabase.from('project_integrations').select('project_id'),
+      supabase!.from('projects').select('*'),
+      supabase!.from('tasks').select('*'),
+      supabase!.from('profiles').select('id, role, is_active'),
+      supabase!.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id').order('report_date', { ascending: true }),
+      supabase!.from('financial_records').select('type, amount, date'),
+      supabase!.from('project_integrations').select('project_id'),
+
     ]);
 
     const projectsData = projects ?? [];

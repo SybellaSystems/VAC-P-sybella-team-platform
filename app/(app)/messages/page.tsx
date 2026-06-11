@@ -35,37 +35,51 @@ export default function MessagesPage() {
     loadChannels();
     loadMembers();
     loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
+    const sb = supabase;
+    if (!sb) return;
     if (!activeChannel) return;
+
     loadMessages(activeChannel.id);
 
-    const sub = supabase
+    const sub = sb
       .channel(`messages:${activeChannel.id}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages', filter: `channel_id=eq.${activeChannel.id}` },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `channel_id=eq.${activeChannel.id}`,
+        },
         async (payload) => {
           const nm = payload.new as Message;
 
           let sender: Profile | undefined = members[nm.sender_id];
           if (!sender) {
-            const { data: p } = await supabase.from('profiles').select('*').eq('id', nm.sender_id).maybeSingle();
+            const { data: p } = await sb
+              .from('profiles')
+              .select('*')
+              .eq('id', nm.sender_id)
+              .maybeSingle();
+
             if (p) {
               sender = p as Profile;
-              setMembers(prev => ({ ...prev, [sender!.id]: sender! }));
+              setMembers((prev) => ({ ...prev, [sender!.id]: sender! }));
             }
           }
 
-          setMessages(prev => [...prev, { ...nm, sender }]);
+          setMessages((prev) => [...prev, { ...nm, sender }]);
           setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
         }
       )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(sub);
+      sb.removeChannel(sub);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChannel]);
@@ -75,32 +89,47 @@ export default function MessagesPage() {
   }, [messages]);
 
   const loadChannels = async () => {
-    const { data } = await supabase.from('channels').select('*').order('name');
+    const sb = supabase;
+    if (!sb) return;
+
+    const { data } = await sb.from('channels').select('*').order('name');
     const ch = (data as Channel[]) || [];
     setChannels(ch);
     if (ch.length > 0 && !activeChannel) setActiveChannel(ch[0]);
   };
 
   const loadMembers = async () => {
-    const { data } = await supabase.from('profiles').select('*');
+    const sb = supabase;
+    if (!sb) return;
+
+    const { data } = await sb.from('profiles').select('*');
     const map: Record<string, Profile> = {};
-    (data as Profile[] || []).forEach(p => {
+    (data as Profile[] || []).forEach((p) => {
       map[p.id] = p;
     });
     setMembers(map);
   };
 
   const loadProjects = async () => {
-    const { data } = await supabase
+    const sb = supabase;
+    if (!sb) return;
+
+    const { data } = await sb
       .from('projects')
-      .select('id, name, description, status, priority, customer_id, budget, spent, start_date, end_date, progress, created_by, created_at, updated_at')
+      .select(
+        'id, name, description, status, priority, customer_id, budget, spent, start_date, end_date, progress, created_by, created_at, updated_at'
+      )
       .order('created_at', { ascending: false })
       .limit(200);
+
     setProjects((data as Project[]) || []);
   };
 
   const loadMessages = async (channelId: string) => {
-    const { data } = await supabase
+    const sb = supabase;
+    if (!sb) return;
+
+    const { data } = await sb
       .from('messages')
       .select('*')
       .eq('channel_id', channelId)
@@ -109,17 +138,19 @@ export default function MessagesPage() {
 
     const list = (data as Message[]) || [];
 
-    const senderIds = Array.from(new Set(list.map(m => m.sender_id)));
+    const senderIds = Array.from(new Set(list.map((m) => m.sender_id)));
     const map: Record<string, Profile> = { ...members };
 
     if (senderIds.length) {
-      const { data: rows } = await supabase.from('profiles').select('*').in('id', senderIds);
-      (rows as Profile[] | null)?.forEach(p => {
+      const { data: rows } = await sb.from('profiles').select('*').in('id', senderIds);
+
+      (rows as Profile[] | null)?.forEach((p) => {
         map[p.id] = p;
       });
-      setMembers(prev => {
+
+      setMembers((prev) => {
         const n = { ...prev };
-        (rows as Profile[] | null)?.forEach(p => {
+        (rows as Profile[] | null)?.forEach((p) => {
           n[p.id] = p;
         });
         return n;
@@ -127,7 +158,7 @@ export default function MessagesPage() {
     }
 
     setMessages(
-      list.map(m => ({
+      list.map((m) => ({
         ...m,
         sender: map[m.sender_id],
       }))
@@ -135,7 +166,7 @@ export default function MessagesPage() {
   };
 
   const filteredChannels = useMemo(() => {
-    return channels.filter(c => c.name.toLowerCase().includes(search.toLowerCase()));
+    return channels.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()));
   }, [channels, search]);
 
   const msgTypeColors: Record<string, string> = {
@@ -161,7 +192,7 @@ export default function MessagesPage() {
 
   const groupedMessages = () => {
     const groups: { date: string; messages: Message[] }[] = [];
-    messages.forEach(msg => {
+    messages.forEach((msg) => {
       const date = formatDate(msg.created_at);
       const lastGroup = groups[groups.length - 1];
       if (!lastGroup || lastGroup.date !== date) groups.push({ date, messages: [msg] });
@@ -175,9 +206,13 @@ export default function MessagesPage() {
     if (!raw) return null;
 
     const strip = (s: string) => s.toLowerCase().replace(/\s+/g, '');
-    const hit = list.find(p => {
+    const hit = list.find((p) => {
       const emailLocal = (p.email || '').split('@')[0]?.toLowerCase();
-      return emailLocal === raw || strip(p.full_name || '') === strip(raw) || (p.full_name || '').toLowerCase().includes(raw);
+      return (
+        emailLocal === raw ||
+        strip(p.full_name || '') === strip(raw) ||
+        (p.full_name || '').toLowerCase().includes(raw)
+      );
     });
     return hit?.id ?? null;
   };
@@ -187,14 +222,14 @@ export default function MessagesPage() {
     if (!raw) return null;
 
     if (/^[0-9a-fA-F-]{36}$/.test(raw)) {
-      return projects.some(p => p.id === raw) ? raw : null;
+      return projects.some((p) => p.id === raw) ? raw : null;
     }
 
     const normalized = raw.toLowerCase().replace(/\s+/g, ' ').trim();
-    const exact = projects.find(p => (p.name || '').toLowerCase() === normalized);
+    const exact = projects.find((p) => (p.name || '').toLowerCase() === normalized);
     if (exact) return exact.id;
 
-    const partial = projects.find(p => (p.name || '').toLowerCase().includes(normalized));
+    const partial = projects.find((p) => (p.name || '').toLowerCase().includes(normalized));
     return partial?.id ?? null;
   };
 
@@ -213,10 +248,14 @@ export default function MessagesPage() {
     const projectId = projectToken ? resolveProjectFromToken(projectToken) || '' : '';
 
     const mentionMatch = rest.match(/@([\w.-]+)/);
-    const assigneeId = mentionMatch ? resolveAssigneeFromToken(mentionMatch[0], Object.values(members)) || '' : '';
+    const assigneeId = mentionMatch
+      ? resolveAssigneeFromToken(mentionMatch[0], Object.values(members)) || ''
+      : '';
 
     const arrowMatch = rest.match(/^(?:->|→)\s*(.+)$/);
-    const defaultTitle = arrowMatch ? arrowMatch[1].trim().replace(/@([\w.-]+)/g, '').trim() : '';
+    const defaultTitle = arrowMatch
+      ? arrowMatch[1].trim().replace(/@([\w.-]+)/g, '').trim()
+      : '';
 
     setPendingTaskLine(pendingLine);
     setTaskProjectId(projectId);
@@ -226,6 +265,8 @@ export default function MessagesPage() {
   };
 
   const insertMessageAndTaskWithModal = async () => {
+    const sb = supabase;
+    if (!sb) return;
     if (!profile || !activeChannel) return;
 
     const body = input.trim();
@@ -233,7 +274,7 @@ export default function MessagesPage() {
 
     setSending(true);
 
-    await supabase.from('messages').insert({
+    await sb.from('messages').insert({
       channel_id: activeChannel.id,
       sender_id: profile.id,
       content: body,
@@ -241,7 +282,7 @@ export default function MessagesPage() {
     });
 
     if (taskProjectId && taskTitle.trim()) {
-      const { data: createdTask, error } = await supabase
+      const { data: createdTask, error } = await sb
         .from('tasks')
         .insert({
           title: taskTitle.trim().slice(0, 500),
@@ -277,13 +318,15 @@ export default function MessagesPage() {
   };
 
   const sendMessage = async () => {
+    const sb = supabase;
+    if (!sb) return;
     if (taskModalOpen) return;
     if (!input.trim() || !activeChannel || !profile) return;
 
     setSending(true);
     const body = input.trim();
 
-    await supabase.from('messages').insert({
+    await sb.from('messages').insert({
       channel_id: activeChannel.id,
       sender_id: profile.id,
       content: body,
@@ -301,6 +344,7 @@ export default function MessagesPage() {
 
       let rest = arrow[1].trim();
       let assignee: string | null = null;
+
       const mentionMatch = rest.match(/@([\w.-]+)/);
       if (mentionMatch) {
         assignee = resolveAssigneeFromToken(mentionMatch[0], Object.values(members));
@@ -309,7 +353,7 @@ export default function MessagesPage() {
 
       if (!rest) continue;
 
-      await supabase.from('tasks').insert({
+      await sb.from('tasks').insert({
         title: rest.slice(0, 500),
         description: `Created from message in #${activeChannel.name}`,
         assigned_to: assignee,
@@ -353,11 +397,11 @@ export default function MessagesPage() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Project *</label>
                 <select
                   value={taskProjectId}
-                  onChange={e => setTaskProjectId(e.target.value)}
+                  onChange={(e) => setTaskProjectId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Select project</option>
-                  {projects.map(p => (
+                  {projects.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.name}
                     </option>
@@ -369,11 +413,11 @@ export default function MessagesPage() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Assign to</label>
                 <select
                   value={taskAssigneeId}
-                  onChange={e => setTaskAssigneeId(e.target.value)}
+                  onChange={(e) => setTaskAssigneeId(e.target.value)}
                   className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
                 >
                   <option value="">Unassigned</option>
-                  {Object.values(members).map(m => (
+                  {Object.values(members).map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.full_name || m.email || m.id}
                     </option>
@@ -385,7 +429,7 @@ export default function MessagesPage() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Task title *</label>
                 <input
                   value={taskTitle}
-                  onChange={e => setTaskTitle(e.target.value)}
+                  onChange={(e) => setTaskTitle(e.target.value)}
                   placeholder="e.g. Implement feature X"
                   className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
                 />
@@ -422,10 +466,13 @@ export default function MessagesPage() {
         <div className="w-64 bg-white border-r border-border flex flex-col flex-shrink-0">
           <div className="p-3 border-b border-border">
             <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Search
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+              />
               <input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search channels..."
                 className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted rounded-lg outline-none focus:ring-1 focus:ring-primary"
               />
@@ -434,7 +481,7 @@ export default function MessagesPage() {
 
           <div className="flex-1 overflow-y-auto py-2">
             <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Channels</p>
-            {filteredChannels.map(ch => (
+            {filteredChannels.map((ch) => (
               <button
                 key={ch.id}
                 onClick={() => setActiveChannel(ch)}
@@ -486,7 +533,7 @@ export default function MessagesPage() {
                             {showHeader && !isOwn && (
                               <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0 mt-0.5 ring-2 ring-white shadow-sm">
                                 <span className="text-white text-xs font-bold">
-                                  {sender?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                                  {sender?.full_name?.split(' ').map((n) => n[0]).join('').slice(0, 2) || '?'}
                                 </span>
                               </div>
                             )}
@@ -585,12 +632,12 @@ export default function MessagesPage() {
 
                   <textarea
                     value={input}
-                    onChange={e => {
+                    onChange={(e) => {
                       const next = e.target.value;
                       setInput(next);
                       if (!taskModalOpen) maybeOpenTaskModalOnInputChange(next);
                     }}
-                    onKeyDown={e => {
+                    onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
                         if (taskModalOpen) return;

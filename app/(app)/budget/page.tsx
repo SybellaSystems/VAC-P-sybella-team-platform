@@ -52,6 +52,10 @@ export default function BudgetPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       const { data } = await supabase
         .from('budget_proposals')
@@ -68,12 +72,15 @@ export default function BudgetPage() {
     };
   }, []);
 
+
   useEffect(() => {
     if (!selectedId) return;
     let cancelled = false;
     (async () => {
+      if (!supabase) return;
       const { data } = await supabase
         .from('approval_workflows')
+
         .select('*')
         .eq('budget_proposal_id', selectedId)
         .order('step_order', { ascending: true });
@@ -90,7 +97,7 @@ export default function BudgetPage() {
   }, [selectedId]);
 
   const createDraft = async () => {
-    if (!profile || !draftTitle.trim()) return;
+    if (!profile || !draftTitle.trim() || !supabase) return;
     setSubmitting(true);
     const { data, error } = await supabase
       .from('budget_proposals')
@@ -125,7 +132,7 @@ export default function BudgetPage() {
   };
 
   const submitForApproval = async (proposalId: string) => {
-    if (!profile) return;
+    if (!profile || !supabase) return;
     setSubmitting(true);
     const now = new Date().toISOString();
     const { error: uErr } = await supabase
@@ -190,7 +197,7 @@ export default function BudgetPage() {
   };
 
   const decideStep = async (step: ApprovalStep, approved: boolean) => {
-    if (!profile || !selectedId) return;
+    if (!profile || !selectedId || !supabase) return;
     setSubmitting(true);
     await supabase
       .from('approval_workflows')

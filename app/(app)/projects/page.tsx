@@ -15,10 +15,18 @@ import type {
 } from '@/lib/database.types';
 import { createProjectIntegration, fetchProjectIntegrations } from '@/lib/integrations';
 import { logAudit } from '@/lib/audit';
-import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2 } from 'lucide-react';
+import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Link2, Upload, Copy, BarChart3 } from 'lucide-react';
+import { ProjectImportWizard } from '@/components/ProjectImportWizard';
+import { ProjectTemplatesDialog } from '@/components/ProjectTemplatesDialog';
+import { ProjectAnalyticsDashboard } from '@/components/ProjectAnalyticsDashboard';
+import { TaskAssignmentForm } from '@/components/TaskAssignmentForm';
 import { parseISO } from 'date-fns';
 
+// Project creation modal modes
+type CreateProjectMode = 'manual' | 'template' | 'import';
+
 const statusColors: Record<string, string> = {
+
   planning: 'bg-blue-100 text-blue-700',
   active: 'bg-emerald-100 text-emerald-700',
   on_hold: 'bg-amber-100 text-amber-700',
@@ -40,14 +48,23 @@ const emptyForm = (): Partial<Project> => ({
 
 export default function ProjectsPage() {
   const { profile } = useAuth();
+  if (!supabase) return null;
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showModal, setShowModal] = useState(false);
+  const [createMode, setCreateMode] = useState<CreateProjectMode>('manual');
+
+  const [taskModalOpen, setTaskModalOpen] = useState(false);
+
+
+
   const [form, setForm] = useState(emptyForm());
   const [saving, setSaving] = useState(false);
+
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [tasks, setTasks] = useState<any[]>([]);
   const [members, setMembers] = useState<Profile[]>([]);
@@ -87,17 +104,24 @@ export default function ProjectsPage() {
 
   useEffect(() => {
     loadProjects();
-    supabase.from('profiles').select('*').then(({ data }) => setMembers((data as Profile[]) || []));
+    supabase!.from('profiles').select('*').then(({ data }) => setMembers((data as Profile[]) || []));
+
+
   }, []);
 
+
   const loadProjects = async () => {
-    const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
+    const result = await supabase!.from('projects').select('*').order('created_at', { ascending: false });
+    const { data } = result;
+
     setProjects((data as Project[]) || []);
+
     setLoading(false);
   };
 
   const loadTasks = async (projectId: string) => {
-    const { data } = await supabase.from('tasks').select('*, profiles(full_name)').eq('project_id', projectId).order('created_at', { ascending: false });
+    const { data } = await supabase!.from('tasks').select('*, profiles(full_name)').eq('project_id', projectId).order('created_at', { ascending: false });
+
     const list = data || [];
     setTasks(list);
     const ids = list.map((t: { id: string }) => t.id);
@@ -105,7 +129,8 @@ export default function ProjectsPage() {
       setSubtasksByTaskId({});
       return;
     }
-    const { data: subs } = await supabase.from('task_subtasks').select('*').in('task_id', ids);
+    const { data: subs } = await supabase!.from('task_subtasks').select('*').in('task_id', ids);
+
     const map: Record<string, TaskSubtask[]> = {};
     (subs as TaskSubtask[] | null)?.forEach((s) => {
       if (!map[s.task_id]) map[s.task_id] = [];
@@ -118,7 +143,8 @@ export default function ProjectsPage() {
   };
 
   const loadFeatureLinks = async (projectId: string) => {
-    const { data } = await supabase.from('project_feature_links').select('*').eq('project_id', projectId);
+    const { data } = await supabase!.from('project_feature_links').select('*').eq('project_id', projectId);
+
     const links = (data as ProjectFeatureLink[]) || [];
     setFeatureLinks(links);
     const labels: Record<string, string> = {};
@@ -132,31 +158,36 @@ export default function ProjectsPage() {
     links.forEach((l) => buckets[l.feature_type].push(l.feature_id));
     const uniq = (xs: string[]) => Array.from(new Set(xs));
     if (buckets.customer.length) {
-      const { data: rows } = await supabase.from('customers').select('id,name').in('id', uniq(buckets.customer));
+      const { data: rows } = await supabase!.from('customers').select('id,name').in('id', uniq(buckets.customer));
+
       rows?.forEach((r: { id: string; name: string }) => {
         labels[`customer:${r.id}`] = r.name;
       });
     }
     if (buckets.financial_record.length) {
-      const { data: rows } = await supabase.from('financial_records').select('id,title').in('id', uniq(buckets.financial_record));
+      const { data: rows } = await supabase!.from('financial_records').select('id,title').in('id', uniq(buckets.financial_record));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`financial_record:${r.id}`] = r.title;
       });
     }
     if (buckets.budget_proposal.length) {
-      const { data: rows } = await supabase.from('budget_proposals').select('id,title').in('id', uniq(buckets.budget_proposal));
+      const { data: rows } = await supabase!.from('budget_proposals').select('id,title').in('id', uniq(buckets.budget_proposal));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`budget_proposal:${r.id}`] = r.title;
       });
     }
     if (buckets.wiki_page.length) {
-      const { data: rows } = await supabase.from('wiki_pages').select('id,title').in('id', uniq(buckets.wiki_page));
+      const { data: rows } = await supabase!.from('wiki_pages').select('id,title').in('id', uniq(buckets.wiki_page));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`wiki_page:${r.id}`] = r.title;
       });
     }
     if (buckets.repo_link.length) {
-      const { data: rows } = await supabase.from('repo_links').select('id,title').in('id', uniq(buckets.repo_link));
+      const { data: rows } = await supabase!.from('repo_links').select('id,title').in('id', uniq(buckets.repo_link));
+
       rows?.forEach((r: { id: string; title: string }) => {
         labels[`repo_link:${r.id}`] = r.title;
       });
@@ -206,11 +237,12 @@ export default function ProjectsPage() {
     let cancelled = false;
     (async () => {
       const [cust, bp, wiki, repo, fin] = await Promise.all([
-        supabase.from('customers').select('id,name').order('name'),
-        supabase.from('budget_proposals').select('id,title').order('created_at', { ascending: false }).limit(80),
-        supabase.from('wiki_pages').select('id,title').order('title').limit(80),
-        supabase.from('repo_links').select('id,title').order('title').limit(80),
-        supabase.from('financial_records').select('id,title').order('created_at', { ascending: false }).limit(80),
+        supabase!.from('customers').select('id,name').order('name'),
+        supabase!.from('budget_proposals').select('id,title').order('created_at', { ascending: false }).limit(80),
+        supabase!.from('wiki_pages').select('id,title').order('title').limit(80),
+        supabase!.from('repo_links').select('id,title').order('title').limit(80),
+        supabase!.from('financial_records').select('id,title').order('created_at', { ascending: false }).limit(80),
+
       ]);
       if (cancelled) return;
       setPickCustomers((cust.data as { id: string; name: string }[]) || []);
@@ -240,7 +272,8 @@ export default function ProjectsPage() {
 
   const addFeatureLink = async () => {
     if (!selectedProject?.id || !linkPickId.trim()) return;
-    await supabase.from('project_feature_links').insert({
+    await supabase!.from('project_feature_links').insert({
+
       project_id: selectedProject.id,
       feature_type: linkPickType,
       feature_id: linkPickId.trim(),
@@ -290,7 +323,8 @@ export default function ProjectsPage() {
     const title = (subtaskDraft[taskId] || '').trim();
     if (!title || !selectedProject) return;
     const ord = (subtasksByTaskId[taskId]?.length ?? 0);
-    await supabase.from('task_subtasks').insert({
+    await supabase!.from('task_subtasks').insert({
+
       task_id: taskId,
       title,
       sort_order: ord,
@@ -329,7 +363,8 @@ export default function ProjectsPage() {
   const handleCreateProject = async () => {
     if (!form.name?.trim()) return;
     setSaving(true);
-    await supabase.from('projects').insert({ ...form, created_by: profile?.id });
+    await supabase!.from('projects').insert({ ...form, created_by: profile?.id });
+
     await loadProjects();
     setSaving(false);
     setShowModal(false);
@@ -337,7 +372,8 @@ export default function ProjectsPage() {
   };
 
   const handleStatusUpdate = async (id: string, status: Project['status']) => {
-    await supabase.from('projects').update({ status }).eq('id', id);
+    await supabase!.from('projects').update({ status }).eq('id', id);
+
     setProjects(prev => prev.map(p => p.id === id ? { ...p, status } : p));
     if (selectedProject?.id === id) setSelectedProject(prev => prev ? { ...prev, status } : null);
   };
@@ -513,77 +549,200 @@ export default function ProjectsPage() {
       {/* Create Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-bold text-foreground">Create New Project</h2>
               <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button>
             </div>
             <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Project Name *</label>
-                <input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })}
-                  placeholder="e.g. Customer Portal v2"
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('manual')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'manual' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  Manual
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('template')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'template' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  From Template
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreateMode('import')}
+                  className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${createMode === 'import' ? 'bg-primary text-primary-foreground border-primary' : 'bg-white border-input hover:bg-muted'}`}
+                >
+                  Import Data
+                </button>
               </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
-                <textarea value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })}
-                  rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
-                  <select value={form.status || 'planning'} onChange={e => setForm({ ...form, status: e.target.value as Project['status'] })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                    {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                  </select>
+
+              {createMode === 'manual' && (
+                <>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Project Name *</label>
+                    <input
+                      value={form.name || ''}
+                      onChange={e => setForm({ ...form, name: e.target.value })}
+                      placeholder="e.g. Customer Portal v2"
+                      className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
+                    <textarea
+                      value={form.description || ''}
+                      onChange={e => setForm({ ...form, description: e.target.value })}
+                      rows={2}
+                      className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
+                      <select
+                        value={form.status || 'planning'}
+                        onChange={e => setForm({ ...form, status: e.target.value as Project['status'] })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
+                      <select
+                        value={form.priority || 'medium'}
+                        onChange={e => setForm({ ...form, priority: e.target.value as Project['priority'] })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      >
+                        {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Budget ($)</label>
+                      <input
+                        type="number"
+                        value={form.budget || 0}
+                        onChange={e => setForm({ ...form, budget: Number(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Progress (%)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={form.progress || 0}
+                        onChange={e => setForm({ ...form, progress: Number(e.target.value) })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label>
+                      <input
+                        type="date"
+                        value={form.start_date || ''}
+                        onChange={e => setForm({ ...form, start_date: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label>
+                      <input
+                        type="date"
+                        value={form.end_date || ''}
+                        onChange={e => setForm({ ...form, end_date: e.target.value })}
+                        className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 mt-5">
+                    <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
+                    <button
+                      onClick={handleCreateProject}
+                      disabled={saving}
+                      className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60"
+                    >
+                      {saving ? 'Creating...' : 'Create Project'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {createMode === 'template' && (
+                <div className="pt-1">
+                  <ProjectTemplatesDialog
+                    open={true}
+                    onOpenChange={(open) => {
+                      if (!open) {
+                        setShowModal(false);
+                      }
+                    }}
+                    onCreateFromTemplate={async () => {
+                      await loadProjects();
+                      setForm(emptyForm());
+                      setSaving(false);
+                      setCreateMode('manual');
+                    }}
+                  />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
-                  <select value={form.priority || 'medium'} onChange={e => setForm({ ...form, priority: e.target.value as Project['priority'] })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                    {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
+              )}
+
+
+              {createMode === 'import' && (
+                <div className="pt-1">
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Import data directly from the documentation/template. If no project exists yet, we’ll create one first and then pull/import the rows.
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted"
+                      onClick={() => setCreateMode('manual')}
+                    >
+                      Go back
+                    </button>
+                    <button
+                      type="button"
+                      className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
+                      onClick={() => setShowModal(false)}
+                    >
+                      Close
+                    </button>
+                  </div>
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Budget ($)</label>
-                  <input type="number" value={form.budget || 0} onChange={e => setForm({ ...form, budget: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Progress (%)</label>
-                  <input type="number" min="0" max="100" value={form.progress || 0} onChange={e => setForm({ ...form, progress: Number(e.target.value) })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label>
-                  <input type="date" value={form.start_date || ''} onChange={e => setForm({ ...form, start_date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label>
-                  <input type="date" value={form.end_date || ''} onChange={e => setForm({ ...form, end_date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
-              <button onClick={handleCreateProject} disabled={saving}
-                className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60">
-                {saving ? 'Creating...' : 'Create Project'}
-              </button>
+              )}
+
+
             </div>
           </div>
         </div>
       )}
 
+      {/* Task modal */}
+      {selectedProject && taskModalOpen && (
+        <TaskAssignmentForm
+          projectId={selectedProject.id}
+          onCancel={() => setTaskModalOpen(false)}
+          onComplete={async () => {
+            await loadTasks(selectedProject.id);
+            setTaskModalOpen(false);
+          }}
+        />
+      )}
+
       {/* Project Detail Drawer */}
       {selectedProject && (
+
         <div className="fixed inset-0 z-50 flex justify-end">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSelectedProject(null)} />
           <div className="relative bg-white w-full max-w-xl h-full overflow-y-auto shadow-2xl">
@@ -640,7 +799,15 @@ export default function ProjectsPage() {
                         return (
                           <div key={task.id}>
                             <div className="flex justify-between text-[10px] text-muted-foreground mb-1 gap-2">
-                              <span className="truncate flex-1">{task.title}</span>
+                                <div className="flex flex-col flex-1 min-w-0">
+                                  <span className="truncate">{task.title}</span>
+                                  {task.due_date && (
+                                    <span className="text-[10px] text-muted-foreground mt-0.5">
+                                      Due: {new Date(task.due_date).toLocaleDateString()}
+                                    </span>
+                                  )}
+                                </div>
+
                               <span className="flex-shrink-0">{task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}</span>
                             </div>
                             <div className="relative h-5 bg-muted rounded-full overflow-hidden">
@@ -661,6 +828,26 @@ export default function ProjectsPage() {
                   <Link2 size={14} className="text-muted-foreground" />
                   <p className="text-sm font-semibold text-foreground">Linked records</p>
                 </div>
+
+                {canManage && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <button
+                      type="button"
+                      onClick={() => setCreateMode('import')}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Import Data
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreateMode('template')}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Templates
+                    </button>
+                  </div>
+                )}
+
                 {canManage && (
                   <div className="flex flex-wrap gap-2 mb-3 items-center">
                     <select
@@ -699,6 +886,7 @@ export default function ProjectsPage() {
                     </button>
                   </div>
                 )}
+
                 {featureLinks.length === 0 ? (
                   <p className="text-xs text-muted-foreground mb-2">No cross-links yet.</p>
                 ) : (
@@ -711,7 +899,42 @@ export default function ProjectsPage() {
                     ))}
                   </ul>
                 )}
+
+                {canManage && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-muted-foreground mb-2">Quick actions</p>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCreateMode('import');
+                      setShowModal(true);
+                    }}
+                    className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground"
+                  >
+                    Import Data (wizard)
+                  </button>
+
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateMode('template');
+                            setShowModal(true);
+                          }}
+                          className="flex-1 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground"
+                        >
+                          Create from Template
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                )}
               </div>
+
 
               <div className="rounded-3xl border border-border bg-muted/50 p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -863,8 +1086,31 @@ export default function ProjectsPage() {
                 </div>
               )}
 
+              {/* Analytics + task creation */}
               <div>
-                <p className="text-sm font-semibold text-foreground mb-3">Tasks</p>
+                <div className="flex items-center gap-2 mb-3">
+                  <BarChart3 size={14} className="text-muted-foreground" />
+                  <p className="text-sm font-semibold text-foreground">Analytics</p>
+                </div>
+                <ProjectAnalyticsDashboard projectId={selectedProject.id} />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <p className="text-sm font-semibold text-foreground">Tasks</p>
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => setTaskModalOpen(true)}
+                      className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground"
+                    >
+                      Create task
+                    </button>
+                  )}
+
+
+                </div>
+
                 {tasks.length === 0 ? (
                   <p className="text-xs text-muted-foreground">No tasks yet</p>
                 ) : (

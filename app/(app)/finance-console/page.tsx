@@ -21,6 +21,7 @@ type LinkRow = ProjectBudgetLink & {
 export default function FinanceConsolePage() {
   useDocumentTitle('Finance console | VAC-P');
   const { profile } = useAuth();
+
   const [links, setLinks] = useState<LinkRow[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [budgets, setBudgets] = useState<{ id: string; title: string }[]>([]);
@@ -31,6 +32,7 @@ export default function FinanceConsolePage() {
   const canMutate = profile?.role && ['finance', 'admin', 'director', 'manager'].includes(profile.role);
 
   const load = async () => {
+    if (!supabase) return;
     const { data } = await supabase
       .from('project_budget_links')
       .select('*, projects(name), budget_proposals(title, amount, currency)')
@@ -44,12 +46,24 @@ export default function FinanceConsolePage() {
       setLoading(false);
       return;
     }
+
     void (async () => {
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+
       await load();
+
       const [p, b] = await Promise.all([
         supabase.from('projects').select('id, name').order('name').limit(100),
-        supabase.from('budget_proposals').select('id, title').order('created_at', { ascending: false }).limit(100),
+        supabase
+          .from('budget_proposals')
+          .select('id, title')
+          .order('created_at', { ascending: false })
+          .limit(100),
       ]);
+
       setProjects((p.data as { id: string; name: string }[]) ?? []);
       setBudgets((b.data as { id: string; title: string }[]) ?? []);
       setLoading(false);
@@ -57,7 +71,8 @@ export default function FinanceConsolePage() {
   }, [profile?.role]);
 
   const addLink = async () => {
-    if (!profile?.id || !canMutate || !projectId || !budgetId) return;
+    if (!profile?.id || !canMutate || !projectId || !budgetId || !supabase) return;
+
     const { data } = await supabase
       .from('project_budget_links')
       .insert({
@@ -68,6 +83,7 @@ export default function FinanceConsolePage() {
       })
       .select('id')
       .maybeSingle();
+
     if (data?.id) {
       await logAudit({
         event_type: 'finance.project_budget_link',
@@ -77,6 +93,7 @@ export default function FinanceConsolePage() {
         details: `${projectId}↔${budgetId}`,
       });
     }
+
     setBudgetId('');
     await load();
   };
@@ -112,6 +129,7 @@ export default function FinanceConsolePage() {
               <Link2 size={18} />
               New project ↔ budget link
             </h2>
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <select
                 className="rounded-md border border-input px-3 py-2 text-sm bg-white"
@@ -125,6 +143,7 @@ export default function FinanceConsolePage() {
                   </option>
                 ))}
               </select>
+
               <select
                 className="rounded-md border border-input px-3 py-2 text-sm bg-white"
                 value={budgetId}
@@ -138,6 +157,7 @@ export default function FinanceConsolePage() {
                 ))}
               </select>
             </div>
+
             <Button onClick={() => void addLink()} disabled={!projectId || !budgetId}>
               Create link
             </Button>
@@ -151,7 +171,9 @@ export default function FinanceConsolePage() {
             <h2 className="text-sm font-semibold px-4 py-3 border-b border-border bg-muted/30">Registered links</h2>
             <ul className="divide-y divide-border">
               {links.length === 0 ? (
-                <li className="px-4 py-8 text-sm text-muted-foreground text-center">No links yet. Add one above or run DB migrations.</li>
+                <li className="px-4 py-8 text-sm text-muted-foreground text-center">
+                  No links yet. Add one above or run DB migrations.
+                </li>
               ) : (
                 links.map((row) => {
                   const pr = row.projects;
@@ -174,3 +196,4 @@ export default function FinanceConsolePage() {
     </div>
   );
 }
+
