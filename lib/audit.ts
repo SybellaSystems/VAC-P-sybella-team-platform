@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase as clientSupabase } from '@/lib/supabase';
 
 /** Best-effort audit trail insert; ignores failures so UX is not blocked. */
 export async function logAudit(params: {
@@ -8,8 +8,9 @@ export async function logAudit(params: {
   action?: string | null;
   details?: string | null;
   metadata?: Record<string, unknown>;
-}) {
+}, supabaseClient?: any) {
   try {
+    const supabase = supabaseClient || clientSupabase;
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData?.user?.id;
     if (!uid) return;

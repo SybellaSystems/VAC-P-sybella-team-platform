@@ -1,11 +1,13 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase';
 import { fetchExternalIntegrationData } from '@/lib/integrations';
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const { projectId } = params;
   const url = new URL(request.url);
   const live = url.searchParams.get('live') === 'true';
+
+  const supabase = createServerSupabase();
 
   const { data, error } = await supabase
     .from('project_integrations')

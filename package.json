@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "scan:supabase": "node ./scripts/scan-supabase-usage.js",
+    "test": "node ./scripts/test-smoke.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

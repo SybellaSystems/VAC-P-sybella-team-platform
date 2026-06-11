@@ -1,6 +1,6 @@
 import type { Notification } from '@/lib/database.types';
 import type { PostgrestResponse } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import { supabase as clientSupabase } from '@/lib/supabase';
 
 export type WikiMetadata = {
   template?: 'Policy' | 'Playbook' | 'Release note' | 'How-to' | 'FAQ' | 'Executive summary';
@@ -77,12 +77,14 @@ export const wikiTemplates: WikiTemplateOption[] = [
   },
 ];
 
-export async function fetchWikiPages(): Promise<PostgrestResponse<WikiPage>> {
+export async function fetchWikiPages(supabaseClient?: any): Promise<PostgrestResponse<WikiPage>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase.from('wiki_pages').select('*').order('updated_at', { ascending: false });
   return response as PostgrestResponse<WikiPage>;
 }
 
-export async function fetchFeaturedWikiPages(): Promise<PostgrestResponse<WikiPage>> {
+export async function fetchFeaturedWikiPages(supabaseClient?: any): Promise<PostgrestResponse<WikiPage>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('wiki_pages')
     .select('*')
@@ -93,9 +95,10 @@ export async function fetchFeaturedWikiPages(): Promise<PostgrestResponse<WikiPa
   return response as PostgrestResponse<WikiPage>;
 }
 
-export async function searchWikiPages(query: string): Promise<PostgrestResponse<WikiPage>> {
+export async function searchWikiPages(query: string, supabaseClient?: any): Promise<PostgrestResponse<WikiPage>> {
+  const supabase = supabaseClient || clientSupabase;
   const normalized = query.trim();
-  if (!normalized) return fetchWikiPages();
+  if (!normalized) return fetchWikiPages(supabase);
   const response = await supabase
     .from('wiki_pages')
     .select('*')
@@ -125,7 +128,8 @@ export async function createWikiPage(payload: {
   is_published: boolean;
   created_by_auth_user_id: string;
   metadata?: WikiMetadata;
-}): Promise<PostgrestResponse<WikiPage>> {
+}, supabaseClient?: any): Promise<PostgrestResponse<WikiPage>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('wiki_pages')
     .insert([
@@ -152,7 +156,8 @@ export async function updateWikiPage(id: string, payload: {
   content: string;
   is_published: boolean;
   metadata?: WikiMetadata;
-}) {
+}, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   return supabase.from('wiki_pages').update({
     slug: payload.slug,
     title: payload.title,
@@ -165,7 +170,8 @@ export async function updateWikiPage(id: string, payload: {
   }).eq('id', id);
 }
 
-export async function fetchUnreadNotificationCount(userId: string): Promise<PostgrestResponse<Notification>> {
+export async function fetchUnreadNotificationCount(userId: string, supabaseClient?: any): Promise<PostgrestResponse<Notification>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('notifications')
     .select('id', { count: 'exact' })
@@ -174,7 +180,8 @@ export async function fetchUnreadNotificationCount(userId: string): Promise<Post
   return response as PostgrestResponse<Notification>;
 }
 
-export async function fetchRecentNotifications(userId: string): Promise<PostgrestResponse<Notification>> {
+export async function fetchRecentNotifications(userId: string, supabaseClient?: any): Promise<PostgrestResponse<Notification>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('notifications')
     .select('*')
@@ -184,7 +191,8 @@ export async function fetchRecentNotifications(userId: string): Promise<Postgres
   return response as PostgrestResponse<Notification>;
 }
 
-export async function markNotificationRead(notificationId: string): Promise<PostgrestResponse<Notification>> {
+export async function markNotificationRead(notificationId: string, supabaseClient?: any): Promise<PostgrestResponse<Notification>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('notifications')
     .update({ is_read: true })
@@ -192,7 +200,8 @@ export async function markNotificationRead(notificationId: string): Promise<Post
   return response as PostgrestResponse<Notification>;
 }
 
-export async function markAllNotificationsRead(userId: string): Promise<PostgrestResponse<Notification>> {
+export async function markAllNotificationsRead(userId: string, supabaseClient?: any): Promise<PostgrestResponse<Notification>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase
     .from('notifications')
     .update({ is_read: true })
@@ -207,7 +216,8 @@ export async function createNotification(payload: {
   message: string;
   type?: Notification['type'];
   link?: string;
-}): Promise<PostgrestResponse<Notification>> {
+}, supabaseClient?: any): Promise<PostgrestResponse<Notification>> {
+  const supabase = supabaseClient || clientSupabase;
   const response = await supabase.from('notifications').insert([
     {
       user_id: payload.user_id,
@@ -221,8 +231,8 @@ export async function createNotification(payload: {
   return response as PostgrestResponse<Notification>;
 }
 
-export async function fetchWikiTrendingTopics() {
-  const { data } = await fetchWikiPages();
+export async function fetchWikiTrendingTopics(supabaseClient?: any) {
+  const { data } = await fetchWikiPages(supabaseClient);
   const categories = new Map<string, number>();
   data?.forEach((page) => {
     const category = page.metadata?.category?.trim() || 'General';
@@ -234,7 +244,8 @@ export async function fetchWikiTrendingTopics() {
     .map(([topic]) => topic);
 }
 
-export async function fetchRecentMessages(channelId: string) {
+export async function fetchRecentMessages(channelId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   return supabase
     .from('messages')
     .select('*')
@@ -243,7 +254,8 @@ export async function fetchRecentMessages(channelId: string) {
     .limit(20);
 }
 
-export async function fetchProjectWikiConnections(projectId: string) {
+export async function fetchProjectWikiConnections(projectId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   return supabase
     .from('project_feature_links')
     .select('*')

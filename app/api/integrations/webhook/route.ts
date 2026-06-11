@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase';
 import { logAudit } from '@/lib/audit';
 
 // External systems call this to push data into VAC-P.
@@ -15,6 +15,7 @@ import { logAudit } from '@/lib/audit';
 //   }
 export async function POST(request: Request) {
   const secret = process.env.VACP_INTEGRATIONS_WEBHOOK_SECRET;
+  const supabase = createServerSupabase();
   const provided = request.headers.get('x-vacp-secret');
 
   if (!secret || !provided || provided !== secret) {
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
     action: 'push',
     details: `integration_id=${integrationRow.id} platform=${integrationRow.platform}`,
     metadata: { payload_summary: typeof payload === 'object' ? Object.keys(payload || {}) : String(payload).slice(0, 200) },
-  }).catch(() => undefined);
+  }, supabase).catch(() => undefined);
 
   return NextResponse.json({ ok: true, integration_id: integrationRow.id, pushed_at });
 }

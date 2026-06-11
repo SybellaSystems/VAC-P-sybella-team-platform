@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase as clientSupabase } from './supabase';
 import type { ProjectAnalytic } from './database.types';
 
 /**
@@ -9,8 +9,10 @@ export async function trackProjectMetric(
   metricName: string,
   value: number,
   dimension1?: string,
-  dimension2?: string
+  dimension2?: string,
+  supabaseClient?: any
 ): Promise<ProjectAnalytic> {
+  const supabase = supabaseClient || clientSupabase;
   const today = new Date().toISOString().split('T')[0];
 
   const { data, error } = await supabase
@@ -36,8 +38,10 @@ export async function trackProjectMetric(
 export async function getProjectAnalytics(
   projectId: string,
   metricName?: string,
-  dateRange?: { from: string; to: string }
+  dateRange?: { from: string; to: string },
+  supabaseClient?: any
 ) {
+  const supabase = supabaseClient || clientSupabase;
   let query = supabase
     .from('project_analytics')
     .select('*')
@@ -61,7 +65,8 @@ export async function getProjectAnalytics(
 /**
  * Calculate task completion rate for a project
  */
-export async function calculateTaskCompletionRate(projectId: string): Promise<number> {
+export async function calculateTaskCompletionRate(projectId: string, supabaseClient?: any): Promise<number> {
+  const supabase = supabaseClient || clientSupabase;
   const { data: tasks } = await supabase
     .from('tasks')
     .select('id, status')
@@ -69,14 +74,15 @@ export async function calculateTaskCompletionRate(projectId: string): Promise<nu
 
   if (!tasks || tasks.length === 0) return 0;
 
-  const completed = tasks.filter(t => t.status === 'done').length;
+  const completed = tasks.filter((t: any) => t.status === 'done').length;
   return Math.round((completed / tasks.length) * 100);
 }
 
 /**
  * Get task statistics for a project
  */
-export async function getTaskStatistics(projectId: string) {
+export async function getTaskStatistics(projectId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   const { data: tasks } = await supabase
     .from('tasks')
     .select('id, status, priority, due_date, assigned_to')
@@ -92,7 +98,7 @@ export async function getTaskStatistics(projectId: string) {
     unassigned: 0,
   };
 
-  tasks.forEach(task => {
+  tasks.forEach((task: any) => {
     // Count by status
     stats.byStatus[task.status] = (stats.byStatus[task.status] || 0) + 1;
 
@@ -119,7 +125,8 @@ export async function getTaskStatistics(projectId: string) {
 /**
  * Get team performance metrics for a project
  */
-export async function getTeamPerformance(projectId: string) {
+export async function getTeamPerformance(projectId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   const { data: assignments } = await supabase
     .from('project_assignments')
     .select('member_id, role_in_project')
@@ -143,7 +150,7 @@ export async function getTeamPerformance(projectId: string) {
       .single();
 
     if (tasks && profile) {
-      const completed = tasks.filter(t => t.status === 'done').length;
+      const completed = tasks.filter((t: any) => t.status === 'done').length;
       performance[assignment.member_id] = {
         name: profile.full_name,
         email: profile.email,
@@ -161,7 +168,8 @@ export async function getTeamPerformance(projectId: string) {
 /**
  * Generate project health score (0-100)
  */
-export async function calculateProjectHealthScore(projectId: string): Promise<number> {
+export async function calculateProjectHealthScore(projectId: string, supabaseClient?: any): Promise<number> {
+  const supabase = supabaseClient || clientSupabase;
   const { data: project } = await supabase
     .from('projects')
     .select('progress, status, budget, spent')
@@ -170,7 +178,7 @@ export async function calculateProjectHealthScore(projectId: string): Promise<nu
 
   if (!project) return 0;
 
-  const stats = await getTaskStatistics(projectId);
+  const stats = await getTaskStatistics(projectId, supabase);
   if (!stats) return 0;
 
   let score = 50; // Base score
@@ -211,7 +219,8 @@ export async function calculateProjectHealthScore(projectId: string): Promise<nu
 /**
  * Get project burndown data (tasks completed over time)
  */
-export async function getProjectBurndown(projectId: string, days: number = 30) {
+export async function getProjectBurndown(projectId: string, days: number = 30, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   const { data: analytics } = await supabase
     .from('project_analytics')
     .select('*')
@@ -228,8 +237,10 @@ export async function getProjectBurndown(projectId: string, days: number = 30) {
  */
 export async function updateProjectAnalytics(
   projectId: string,
-  metrics: Array<{ name: string; value: number; dimension1?: string; dimension2?: string }>
+  metrics: Array<{ name: string; value: number; dimension1?: string; dimension2?: string }>,
+  supabaseClient?: any
 ) {
+  const supabase = supabaseClient || clientSupabase;
   const today = new Date().toISOString().split('T')[0];
   
   const upsertData = metrics.map(m => ({
@@ -251,7 +262,7 @@ export async function updateProjectAnalytics(
 /**
  * Get trending metrics (comparison with previous period)
  */
-export async function getTrendingMetrics(projectId: string, metricName: string, days: number = 7) {
+export async function getTrendingMetrics(projectId: string, metricName: string, days: number = 7, supabaseClient?: any) {
   const today = new Date();
   const currentPeriodStart = new Date(today.getTime() - days * 24 * 60 * 60 * 1000);
   const previousPeriodStart = new Date(currentPeriodStart.getTime() - days * 24 * 60 * 60 * 1000);
@@ -259,19 +270,19 @@ export async function getTrendingMetrics(projectId: string, metricName: string, 
   const currentData = await getProjectAnalytics(projectId, metricName, {
     from: currentPeriodStart.toISOString().split('T')[0],
     to: today.toISOString().split('T')[0],
-  });
+  }, supabaseClient);
 
   const previousData = await getProjectAnalytics(projectId, metricName, {
     from: previousPeriodStart.toISOString().split('T')[0],
     to: new Date(previousPeriodStart.getTime() + days * 24 * 60 * 60 * 1000 - 1).toISOString().split('T')[0],
-  });
+  }, supabaseClient);
 
   const currentAvg = currentData.length > 0
-    ? currentData.reduce((sum, d) => sum + d.metric_value, 0) / currentData.length
+    ? currentData.reduce((sum: number, d: any) => sum + d.metric_value, 0) / currentData.length
     : 0;
 
   const previousAvg = previousData.length > 0
-    ? previousData.reduce((sum, d) => sum + d.metric_value, 0) / previousData.length
+    ? previousData.reduce((sum: number, d: any) => sum + d.metric_value, 0) / previousData.length
     : 0;
 
   return {

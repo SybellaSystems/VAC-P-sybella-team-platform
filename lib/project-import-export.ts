@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase as clientSupabase } from './supabase';
 import type { Project, ProjectRow, ProjectCustomField, ImportJob, ExtendedProject } from './database.types';
 
 /**
@@ -62,8 +62,10 @@ export function detectHeaders(data: string[][]): {
  */
 export async function createCustomFieldsFromHeaders(
   projectId: string,
-  headers: string[]
+  headers: string[],
+  supabaseClient?: any
 ): Promise<ProjectCustomField[]> {
+  const supabase = supabaseClient || clientSupabase;
   const customFields: Partial<ProjectCustomField>[] = headers.map((header, index) => ({
     project_id: projectId,
     field_name: header.toLowerCase().replace(/\s+/g, '_'),
@@ -91,7 +93,9 @@ export async function importProjectData(
   headers: string[],
   userId: string,
   fileName: string
+, supabaseClient?: any
 ): Promise<ImportJob> {
+  const supabase = supabaseClient || clientSupabase;
   // Create import job record
   const { data: importJob, error: jobError } = await supabase
     .from('import_jobs')
@@ -162,7 +166,8 @@ export async function importProjectData(
 /**
  * Export project data to CSV format
  */
-export async function exportProjectDataToCSV(projectId: string): Promise<string> {
+export async function exportProjectDataToCSV(projectId: string, supabaseClient?: any): Promise<string> {
+  const supabase = supabaseClient || clientSupabase;
   // Fetch custom fields
   const { data: fields } = await supabase
     .from('project_custom_fields')
@@ -178,12 +183,12 @@ export async function exportProjectDataToCSV(projectId: string): Promise<string>
 
   if (!fields || !rows) return '';
 
-  const headers = fields.map(f => f.field_label);
-  const headerRow = headers.map(h => `"${h}"`).join(',');
+  const headers = fields.map((f: any) => f.field_label);
+  const headerRow = headers.map((h: string) => `"${h}"`).join(',');
 
-  const dataRows = rows.map(row => {
+  const dataRows = rows.map((row: any) => {
     return headers
-      .map(header => {
+      .map((header: string) => {
         const key = header.toLowerCase().replace(/\s+/g, '_');
         const value = row.data[key] || '';
         return `"${String(value).replace(/"/g, '""')}"`;
@@ -197,7 +202,8 @@ export async function exportProjectDataToCSV(projectId: string): Promise<string>
 /**
  * Get project data for export with analytics
  */
-export async function getProjectExportData(projectId: string) {
+export async function getProjectExportData(projectId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   const { data: project } = await supabase
     .from('projects')
     .select('*')
@@ -240,7 +246,9 @@ export async function createProjectFromTemplate(
   templateId: string,
   projectData: Partial<ExtendedProject>,
   userId: string
+, supabaseClient?: any
 ): Promise<Project> {
+  const supabase = supabaseClient || clientSupabase;
   const { data: template } = await supabase
     .from('project_templates')
     .select('*')
@@ -323,14 +331,16 @@ export async function mapAndImportColumns(
   mapping: Record<string, string>,
   data: string[][],
   userId: string
+, supabaseClient?: any
 ): Promise<void> {
+  const supabase = supabaseClient || clientSupabase;
   // Create any missing fields
   const existingFields = await supabase
     .from('project_custom_fields')
     .select('field_label')
     .eq('project_id', projectId);
 
-  const existingLabels = existingFields.data?.map(f => f.field_label) || [];
+  const existingLabels = existingFields.data?.map((f: any) => f.field_label) || [];
   const newHeaders = headers.filter(h => !existingLabels.includes(h));
 
   if (newHeaders.length > 0) {
@@ -338,9 +348,9 @@ export async function mapAndImportColumns(
   }
 
   // Import data with mapping
-  const mappedData = data.slice(1).map(row => {
+  const mappedData = data.slice(1).map((row: any) => {
     const mapped: Record<string, any> = {};
-    headers.forEach((header, index) => {
+    headers.forEach((header: string, index: number) => {
       const mappedKey = mapping[header] || header;
       mapped[mappedKey.toLowerCase().replace(/\s+/g, '_')] = row[index] || '';
     });

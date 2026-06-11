@@ -1,0 +1,377 @@
+%% VAC-P Database Relationship Diagram (Phase 1 Audit)
+%% Render with Mermaid ER diagram support (GitHub, VS Code, mermaid.live)
+%% Source: supabase/migrations/*.sql + lib/database.types.ts
+
+erDiagram
+  AUTH_USERS {
+    uuid id PK
+    text email
+  }
+
+  PROFILES {
+    uuid id PK_FK
+    text full_name
+    text email UK
+    text role
+    boolean is_active
+    jsonb notification_preferences
+    timestamptz joined_at
+  }
+
+  CUSTOMERS {
+    uuid id PK
+    text name
+    text email
+    text status
+    numeric total_contract_value
+    uuid created_by FK
+  }
+
+  PROJECTS {
+    uuid id PK
+    text name
+    text status
+    text priority
+    uuid customer_id FK
+    numeric budget
+    numeric spent
+    int progress
+    uuid created_by FK
+    text import_source
+    jsonb column_mapping
+    boolean is_template
+  }
+
+  PROJECT_ASSIGNMENTS {
+    uuid id PK
+    uuid project_id FK
+    uuid member_id FK
+    text role_in_project
+    boolean can_edit_tasks
+    boolean can_manage_members
+  }
+
+  TASKS {
+    uuid id PK
+    uuid project_id FK
+    text title
+    text status
+    text priority
+    uuid assigned_to FK
+    uuid created_by FK
+    timestamptz due_date
+  }
+
+  TASK_SUBTASKS {
+    uuid id PK
+    uuid task_id FK
+    text title
+    text status
+    int sort_order
+    uuid assigned_to FK
+  }
+
+  TASK_MESSAGES {
+    uuid id PK
+    uuid task_id FK
+    uuid channel_id FK
+    text message_text
+    uuid created_by FK
+  }
+
+  CHANNELS {
+    uuid id PK
+    text name
+    text type
+    uuid created_by FK
+  }
+
+  CHANNEL_MEMBERS {
+    uuid id PK
+    uuid channel_id FK
+    uuid member_id FK
+  }
+
+  MESSAGES {
+    uuid id PK
+    uuid channel_id FK
+    uuid sender_id FK
+    text content
+    text message_type
+    uuid parent_id FK
+  }
+
+  ACCOUNTABILITY_REPORTS {
+    uuid id PK
+    uuid member_id FK
+    date report_date
+    text report_type
+    text status
+    text risk_level
+    jsonb report_data
+    uuid approval_workflow_id FK
+    uuid reviewed_by FK
+  }
+
+  FINANCIAL_RECORDS {
+    uuid id PK
+    text title
+    text type
+    numeric amount
+    uuid project_id FK
+    text status
+    uuid created_by FK
+  }
+
+  COMPANY_METRICS {
+    uuid id PK
+    text metric_key
+    numeric metric_value
+    date recorded_at
+  }
+
+  BUDGET_PROPOSALS {
+    uuid id PK
+    text title
+    numeric amount
+    text status
+    uuid submitted_by FK
+    timestamptz decided_at
+  }
+
+  APPROVAL_WORKFLOWS {
+    uuid id PK
+    text entity_type
+    uuid entity_id
+    uuid approver_id FK
+    text status
+    int step_order
+  }
+
+  PROJECT_BUDGET_LINKS {
+    uuid id PK
+    uuid project_id FK
+    uuid budget_proposal_id FK
+    text link_role
+  }
+
+  LEAVE_REQUESTS {
+    uuid id PK
+    uuid member_id FK
+    date start_date
+    date end_date
+    text status
+    uuid reviewed_by FK
+  }
+
+  NOTIFICATIONS {
+    uuid id PK
+    uuid user_id FK
+    text title
+    text message
+    text type
+    boolean is_read
+    text link
+  }
+
+  SHARES {
+    uuid id PK
+    text share_class
+    numeric total_units
+    numeric par_value
+  }
+
+  OWNERSHIP_RECORDS {
+    uuid id PK
+    uuid share_id FK
+    uuid auth_user_id FK
+    numeric units
+    timestamptz acquired_at
+  }
+
+  SHARE_ALLOCATIONS {
+    uuid id PK
+    uuid share_id FK
+    uuid profile_id FK
+    text allocation_type
+    numeric units
+    uuid allocated_by FK
+  }
+
+  HR_CANDIDATES {
+    uuid id PK
+    text full_name
+    text stage
+    uuid assigned_hr FK
+    uuid created_by FK
+  }
+
+  HR_PERFORMANCE_REVIEWS {
+    uuid id PK
+    uuid member_id FK
+    uuid reviewer_id FK
+    text status
+    text period_label
+  }
+
+  HR_ONBOARDING_TASKS {
+    uuid id PK
+    uuid member_id FK
+    text title
+    boolean is_done
+    uuid assigned_to FK
+  }
+
+  WIKI_PAGES {
+    uuid id PK
+    text slug UK
+    text title
+    text content
+    boolean is_published
+    uuid created_by_user_id FK
+    jsonb metadata
+  }
+
+  REPO_LINKS {
+    uuid id PK
+    text name
+    text url
+    text provider
+    uuid created_by FK
+  }
+
+  PROJECT_FEATURE_LINKS {
+    uuid id PK
+    uuid project_id FK
+    text feature_type
+    uuid feature_id
+    uuid created_by FK
+  }
+
+  PROJECT_INTEGRATIONS {
+    uuid id PK
+    uuid project_id FK
+    text platform
+    text endpoint
+    text auth_type
+    jsonb credentials
+    jsonb last_pushed_payload
+    timestamptz last_pushed_at
+  }
+
+  PROJECT_CUSTOM_FIELDS {
+    uuid id PK
+    uuid project_id FK
+    text field_name
+    text field_type
+    jsonb options
+  }
+
+  PROJECT_ROWS {
+    uuid id PK
+    uuid project_id FK
+    jsonb data
+  }
+
+  PROJECT_ANALYTICS {
+    uuid id PK
+    uuid project_id FK
+    text metric_name
+    numeric metric_value
+    date metric_date
+  }
+
+  IMPORT_JOBS {
+    uuid id PK
+    uuid project_id FK
+    text file_name
+    text status
+    int imported_rows
+    uuid created_by FK
+  }
+
+  PROJECT_TEMPLATES {
+    uuid id PK
+    text name
+    text category
+    jsonb structure
+    boolean is_public
+    uuid created_by FK
+  }
+
+  AUDIT_LOGS {
+    uuid id PK
+    uuid auth_user_id FK
+    text actor_role
+    text event_type
+    text entity_type
+    uuid entity_id
+    jsonb metadata
+    timestamptz created_at
+  }
+
+  %% Auth extension
+  AUTH_USERS ||--|| PROFILES : "1:1 trigger on signup"
+
+  %% People & customers
+  PROFILES ||--o{ CUSTOMERS : "created_by"
+  PROFILES ||--o{ PROJECTS : "created_by"
+  PROFILES ||--o{ PROJECT_ASSIGNMENTS : "member_id"
+  PROFILES ||--o{ TASKS : "assigned_to / created_by"
+  PROFILES ||--o{ ACCOUNTABILITY_REPORTS : "member_id"
+  PROFILES ||--o{ LEAVE_REQUESTS : "member_id"
+  PROFILES ||--o{ NOTIFICATIONS : "user_id"
+  PROFILES ||--o{ HR_CANDIDATES : "assigned_hr"
+  PROFILES ||--o{ HR_PERFORMANCE_REVIEWS : "member / reviewer"
+  PROFILES ||--o{ HR_ONBOARDING_TASKS : "member / assigned_to"
+
+  %% Projects core
+  CUSTOMERS ||--o{ PROJECTS : "customer_id"
+  PROJECTS ||--o{ PROJECT_ASSIGNMENTS : "assignments"
+  PROJECTS ||--o{ TASKS : "tasks"
+  PROJECTS ||--o{ FINANCIAL_RECORDS : "project_id"
+  PROJECTS ||--o{ PROJECT_FEATURE_LINKS : "links"
+  PROJECTS ||--o{ PROJECT_INTEGRATIONS : "integrations"
+  PROJECTS ||--o{ PROJECT_CUSTOM_FIELDS : "custom_fields"
+  PROJECTS ||--o{ PROJECT_ROWS : "import_rows"
+  PROJECTS ||--o{ PROJECT_ANALYTICS : "metrics"
+  PROJECTS ||--o{ IMPORT_JOBS : "imports"
+  PROJECTS ||--o{ PROJECT_BUDGET_LINKS : "budget_links"
+
+  %% Tasks
+  TASKS ||--o{ TASK_SUBTASKS : "subtasks"
+  TASKS ||--o{ TASK_MESSAGES : "task_chat"
+
+  %% Messaging
+  CHANNELS ||--o{ CHANNEL_MEMBERS : "members"
+  CHANNELS ||--o{ MESSAGES : "messages"
+  PROFILES ||--o{ CHANNEL_MEMBERS : "member_id"
+  PROFILES ||--o{ MESSAGES : "sender_id"
+  CHANNELS ||--o{ TASK_MESSAGES : "optional_channel"
+
+  %% Finance & approvals
+  BUDGET_PROPOSALS ||--o{ APPROVAL_WORKFLOWS : "entity_id polymorphic"
+  BUDGET_PROPOSALS ||--o{ PROJECT_BUDGET_LINKS : "budget_proposal_id"
+  PROFILES ||--o{ APPROVAL_WORKFLOWS : "approver_id"
+  ACCOUNTABILITY_REPORTS ||--o| APPROVAL_WORKFLOWS : "approval_workflow_id"
+
+  %% Shares
+  SHARES ||--o{ OWNERSHIP_RECORDS : "ownership"
+  SHARES ||--o{ SHARE_ALLOCATIONS : "allocations"
+  PROFILES ||--o{ SHARE_ALLOCATIONS : "profile_id"
+
+  %% Feature links (polymorphic feature_id)
+  PROJECTS ||--o{ PROJECT_FEATURE_LINKS : "project_id"
+  CUSTOMERS ||--o{ PROJECT_FEATURE_LINKS : "feature_id when customer"
+  WIKI_PAGES ||--o{ PROJECT_FEATURE_LINKS : "feature_id when wiki"
+  REPO_LINKS ||--o{ PROJECT_FEATURE_LINKS : "feature_id when repo"
+
+  %% Wiki & repos
+  PROFILES ||--o{ WIKI_PAGES : "created_by_user_id"
+  PROFILES ||--o{ REPO_LINKS : "created_by"
+
+  %% Audit
+  PROFILES ||--o{ AUDIT_LOGS : "auth_user_id"
+
+  %% Templates
+  PROFILES ||--o{ PROJECT_TEMPLATES : "created_by"

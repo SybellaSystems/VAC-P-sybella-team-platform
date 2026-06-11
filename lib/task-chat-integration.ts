@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { supabase as clientSupabase } from './supabase';
 import type { TaskMessage, ExtendedTask } from './database.types';
 
 /**
@@ -8,8 +8,10 @@ export async function createTaskMessage(
   taskId: string,
   messageText: string,
   userId: string,
-  channelId?: string
+  channelId?: string,
+  supabaseClient?: any
 ): Promise<TaskMessage> {
+  const supabase = supabaseClient || clientSupabase;
   const { data, error } = await supabase
     .from('task_messages')
     .insert({
@@ -28,7 +30,8 @@ export async function createTaskMessage(
 /**
  * Get all messages for a task
  */
-export async function getTaskMessages(taskId: string): Promise<TaskMessage[]> {
+export async function getTaskMessages(taskId: string, supabaseClient?: any): Promise<TaskMessage[]> {
+  const supabase = supabaseClient || clientSupabase;
   const { data, error } = await supabase
     .from('task_messages')
     .select('*')
@@ -119,7 +122,8 @@ ${feedback ? `\n**Feedback:** ${feedback}` : ''}`;
 /**
  * Get task summary for display in chat context
  */
-export async function getTaskSummaryForChat(taskId: string) {
+export async function getTaskSummaryForChat(taskId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   const { data: task } = await supabase
     .from('tasks')
     .select('*')
@@ -136,7 +140,7 @@ export async function getTaskSummaryForChat(taskId: string) {
         .single()
     : { data: null };
 
-  const messages = await getTaskMessages(taskId);
+  const messages = await getTaskMessages(taskId, supabase);
 
   return {
     task: {
@@ -157,8 +161,10 @@ export async function getTaskSummaryForChat(taskId: string) {
  */
 export async function linkTaskToChannel(
   taskId: string,
-  channelId: string
+  channelId: string,
+  supabaseClient?: any
 ): Promise<void> {
+  const supabase = supabaseClient || clientSupabase;
   // Update task with channel ID
   const { error } = await supabase
     .from('tasks')
@@ -171,7 +177,8 @@ export async function linkTaskToChannel(
 /**
  * Get all tasks linked to a channel
  */
-export async function getChannelTasks(channelId: string): Promise<ExtendedTask[]> {
+export async function getChannelTasks(channelId: string, supabaseClient?: any): Promise<ExtendedTask[]> {
+  const supabase = supabaseClient || clientSupabase;
   const { data, error } = await supabase
     .from('tasks')
     .select('*')
@@ -190,10 +197,13 @@ export async function createTaskFromChatMessage(
   projectId: string,
   channelId: string,
   userId: string,
-  assignedTo?: string
+  assignedTo?: string,
+  supabaseClient?: any
 ): Promise<ExtendedTask> {
   // Extract task title from message (first line or first 50 chars)
   const title = messageContent.split('\n')[0].substring(0, 100);
+
+  const supabase = supabaseClient || clientSupabase;
 
   const { data, error } = await supabase
     .from('tasks')
@@ -264,8 +274,10 @@ export function formatTaskForChatMention(task: ExtendedTask): string {
 export async function hasUnreadTaskMessages(
   taskId: string,
   userId: string,
-  lastReadTime: Date
+  lastReadTime: Date,
+  supabaseClient?: any
 ): Promise<boolean> {
+  const supabase = supabaseClient || clientSupabase;
   const { data, error } = await supabase
     .from('task_messages')
     .select('id')

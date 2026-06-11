@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase';
 
 export type TransactionalEmailParams = {
   to: string;
@@ -95,6 +95,7 @@ export async function sendTransactionalEmail(params: TransactionalEmailParams) {
 
 export async function queueEmail(params: TransactionalEmailParams) {
   try {
+    const supabase = createServerSupabase();
     await supabase.from('email_queue').insert({
       to: params.to,
       subject: params.subject,

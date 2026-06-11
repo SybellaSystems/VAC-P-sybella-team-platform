@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase';
+import { supabase as clientSupabase } from '@/lib/supabase';
 import type { ProjectIntegration } from '@/lib/database.types';
 
-export async function fetchProjectIntegrations(projectId: string) {
+export async function fetchProjectIntegrations(projectId: string, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   return supabase.from('project_integrations').select('*').eq('project_id', projectId);
 }
 
@@ -13,7 +14,8 @@ export async function createProjectIntegration(payload: {
   credentials?: ProjectIntegration['credentials'];
   metadata?: Record<string, any>;
   created_by?: string | null;
-}) {
+}, supabaseClient?: any) {
+  const supabase = supabaseClient || clientSupabase;
   return supabase.from('project_integrations').insert([
     {
       project_id: payload.project_id,

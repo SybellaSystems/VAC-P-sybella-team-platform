@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabase } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   try {
+    const supabase = createServerSupabase();
     const { title, message, type = 'info' } = await request.json();
     if (!title || !message) {
       return NextResponse.json({ error: 'Missing title or message.' }, { status: 400 });
