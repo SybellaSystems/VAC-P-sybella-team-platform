@@ -1,5 +1,34 @@
 import { supabase as clientSupabase } from './supabase';
-import type { Project, ProjectRow, ProjectCustomField, ImportJob, ExtendedProject } from './database.types';
+import type {
+  Project,
+  ProjectRow,
+  ProjectCustomField,
+  ImportJob,
+  ExtendedProject,
+} from './database.types';
+
+type SupabaseLikeClient = typeof clientSupabase;
+
+function normalizeFieldName(label: string) {
+  return label
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'field';
+}
+
+function dedupeHeaders(headers: string[]) {
+  const seen = new Map<string, number>();
+
+  return headers.map((header, index) => {
+    const baseLabel = header.trim() || `Column ${index + 1}`;
+    const fieldName = normalizeFieldName(baseLabel);
+    const existing = seen.get(fieldName) ?? 0;
+    seen.set(fieldName, existing + 1);
+
+    return existing === 0 ? baseLabel : `${baseLabel} ${existing + 1}`;
+  });
+}
 
 /**
  * Parse CSV content into rows
@@ -36,9 +65,33 @@ export async function parseXLSX(file: File): Promise<{
   sheets: Record<string, string[][]>;
   sheetNames: string[];
 }> {
-  // This is a placeholder - in production, use the 'xlsx' npm package
-  // For now, we'll require the file to be converted to CSV
-  throw new Error('Direct XLSX parsing requires the xlsx package. Please convert to CSV or implement xlsx parsing.');
+  const XLSX = await import('xlsx');
+  const buffer = await file.arrayBuffer();
+  const workbook = XLSX.read(buffer, {
+    type: 'array',
+    cellDates: false,
+  });
+
+  const sheetNames = workbook.SheetNames;
+  const sheets = Object.fromEntries(
+    sheetNames.map((sheetName) => {
+      const sheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
+        header: 1,
+        raw: false,
+        defval: '',
+      });
+
+      return [
+        sheetName,
+        rows
+          .map((row) => row.map((value) => String(value ?? '').trimEnd()))
+          .filter((row) => row.some((cell) => cell.trim() !== '')),
+      ];
+    })
+  );
+
+  return { sheets, sheetNames };
 }
 
 /**
@@ -63,17 +116,35 @@ export function detectHeaders(data: string[][]): {
 export async function createCustomFieldsFromHeaders(
   projectId: string,
   headers: string[],
-  supabaseClient?: any
+  supabaseClient?: SupabaseLikeClient
 ): Promise<ProjectCustomField[]> {
   const supabase = supabaseClient || clientSupabase;
-  const customFields: Partial<ProjectCustomField>[] = headers.map((header, index) => ({
+  const normalizedHeaders = dedupeHeaders(headers);
+  const { data: existingFields, error: existingError } = await supabase
+    .from('project_custom_fields')
+    .select('field_name')
+    .eq('project_id', projectId);
+
+  if (existingError) throw existingError;
+
+  const existingFieldNames = new Set(
+    (existingFields ?? []).map((field: { field_name: string }) => field.field_name)
+  );
+
+  const customFields: Partial<ProjectCustomField>[] = normalizedHeaders
+    .map((header, index) => ({
     project_id: projectId,
-    field_name: header.toLowerCase().replace(/\s+/g, '_'),
+    field_name: normalizeFieldName(header),
     field_label: header,
     field_type: 'text',
     sort_order: index,
     is_visible: true,
-  }));
+    }))
+    .filter((field) => field.field_name && !existingFieldNames.has(field.field_name));
+
+  if (customFields.length === 0) {
+    return [];
+  }
 
   const { data, error } = await supabase
     .from('project_custom_fields')
@@ -93,9 +164,10 @@ export async function importProjectData(
   headers: string[],
   userId: string,
   fileName: string
-, supabaseClient?: any
+, supabaseClient?: SupabaseLikeClient
 ): Promise<ImportJob> {
   const supabase = supabaseClient || clientSupabase;
+  const normalizedHeaders = dedupeHeaders(headers);
   // Create import job record
   const { data: importJob, error: jobError } = await supabase
     .from('import_jobs')
@@ -116,7 +188,9 @@ export async function importProjectData(
     // Insert data rows
     const rows: Partial<ProjectRow>[] = csvData.slice(1).map(row => ({
       project_id: projectId,
-      data: Object.fromEntries(headers.map((h, i) => [h.toLowerCase().replace(/\s+/g, '_'), row[i] || ''])),
+      data: Object.fromEntries(
+        normalizedHeaders.map((header, index) => [normalizeFieldName(header), row[index] || ''])
+      ),
     }));
 
     const { error: insertError } = await supabase
@@ -143,7 +217,7 @@ export async function importProjectData(
       .update({
         import_source: 'csv',
         source_file_name: fileName,
-        column_mapping: Object.fromEntries(headers.map((h, i) => [i, h])),
+        column_mapping: Object.fromEntries(normalizedHeaders.map((header, index) => [index, header])),
       })
       .eq('id', projectId);
 
@@ -166,7 +240,7 @@ export async function importProjectData(
 /**
  * Export project data to CSV format
  */
-export async function exportProjectDataToCSV(projectId: string, supabaseClient?: any): Promise<string> {
+export async function exportProjectDataToCSV(projectId: string, supabaseClient?: SupabaseLikeClient): Promise<string> {
   const supabase = supabaseClient || clientSupabase;
   // Fetch custom fields
   const { data: fields } = await supabase
@@ -183,13 +257,13 @@ export async function exportProjectDataToCSV(projectId: string, supabaseClient?:
 
   if (!fields || !rows) return '';
 
-  const headers = fields.map((f: any) => f.field_label);
+  const headers = fields.map((field: { field_label: string }) => field.field_label);
   const headerRow = headers.map((h: string) => `"${h}"`).join(',');
 
-  const dataRows = rows.map((row: any) => {
+  const dataRows = rows.map((row: ProjectRow) => {
     return headers
       .map((header: string) => {
-        const key = header.toLowerCase().replace(/\s+/g, '_');
+        const key = normalizeFieldName(header);
         const value = row.data[key] || '';
         return `"${String(value).replace(/"/g, '""')}"`;
       })
@@ -202,7 +276,7 @@ export async function exportProjectDataToCSV(projectId: string, supabaseClient?:
 /**
  * Get project data for export with analytics
  */
-export async function getProjectExportData(projectId: string, supabaseClient?: any) {
+export async function getProjectExportData(projectId: string, supabaseClient?: SupabaseLikeClient) {
   const supabase = supabaseClient || clientSupabase;
   const { data: project } = await supabase
     .from('projects')
@@ -246,7 +320,7 @@ export async function createProjectFromTemplate(
   templateId: string,
   projectData: Partial<ExtendedProject>,
   userId: string
-, supabaseClient?: any
+, supabaseClient?: SupabaseLikeClient
 ): Promise<Project> {
   const supabase = supabaseClient || clientSupabase;
   const { data: template } = await supabase
@@ -273,7 +347,7 @@ export async function createProjectFromTemplate(
 
   // Copy custom fields from template
   if (template.custom_fields) {
-    const fieldsToInsert = template.custom_fields.map((field: any) => ({
+    const fieldsToInsert = template.custom_fields.map((field: ProjectCustomField) => ({
       ...field,
       project_id: newProject.id,
       id: undefined,
@@ -303,16 +377,20 @@ export function validateImportData(
     errors.push('No data provided');
   }
 
+  if (!data[0]) {
+    errors.push('Header row is missing');
+  }
+
   if (data.length < (options?.minRows || 2)) {
     errors.push(`Expected at least ${options?.minRows || 2} rows (including header)`);
   }
 
-  if (data[0].length < (options?.minCols || 1)) {
+  if (data[0] && data[0].length < (options?.minCols || 1)) {
     errors.push(`Expected at least ${options?.minCols || 1} columns`);
   }
 
   // Check for empty headers
-  if (data[0].some(h => !h || h.trim() === '')) {
+  if (data[0] && data[0].some(h => !h || h.trim() === '')) {
     errors.push('Headers cannot be empty');
   }
 
@@ -331,7 +409,7 @@ export async function mapAndImportColumns(
   mapping: Record<string, string>,
   data: string[][],
   userId: string
-, supabaseClient?: any
+, supabaseClient?: SupabaseLikeClient
 ): Promise<void> {
   const supabase = supabaseClient || clientSupabase;
   // Create any missing fields
@@ -340,19 +418,21 @@ export async function mapAndImportColumns(
     .select('field_label')
     .eq('project_id', projectId);
 
-  const existingLabels = existingFields.data?.map((f: any) => f.field_label) || [];
-  const newHeaders = headers.filter(h => !existingLabels.includes(h));
+  const existingLabels = existingFields.data?.map((field: { field_label: string }) => field.field_label) || [];
+  const normalizedHeaders = dedupeHeaders(headers);
+  const mappedHeaders = normalizedHeaders.map((header) => mapping[header] || header);
+  const newHeaders = mappedHeaders.filter((header) => !existingLabels.includes(header));
 
   if (newHeaders.length > 0) {
-    await createCustomFieldsFromHeaders(projectId, newHeaders);
+    await createCustomFieldsFromHeaders(projectId, newHeaders, supabase);
   }
 
   // Import data with mapping
-  const mappedData = data.slice(1).map((row: any) => {
-    const mapped: Record<string, any> = {};
-    headers.forEach((header: string, index: number) => {
+  const mappedData = data.slice(1).map((row) => {
+    const mapped: Record<string, string> = {};
+    normalizedHeaders.forEach((header, index) => {
       const mappedKey = mapping[header] || header;
-      mapped[mappedKey.toLowerCase().replace(/\s+/g, '_')] = row[index] || '';
+      mapped[normalizeFieldName(mappedKey)] = row[index] || '';
     });
     return mapped;
   });
