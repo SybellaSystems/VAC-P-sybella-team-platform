@@ -22,6 +22,8 @@ export default function AnalyticsPage() {
     reportTrend: [] as any[],
     reportHealthTrend: [] as any[],
     financeSummary: [] as any[],
+    reportStatusDistribution: [] as any[],
+    topReporters: [] as any[],
     externalIntegrationCount: 0,
     reportStats: {
       totalReports: 0,
@@ -50,8 +52,8 @@ export default function AnalyticsPage() {
     ] = await Promise.all([
       supabase!.from('projects').select('*'),
       supabase!.from('tasks').select('*'),
-      supabase!.from('profiles').select('id, role, is_active'),
-      supabase!.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id').order('report_date', { ascending: true }),
+      supabase!.from('profiles').select('id, role, is_active, full_name, email'),
+      supabase!.from('accountability_reports').select('report_date, status, operational_health, confidence_score, member_id, report_role').order('report_date', { ascending: true }),
       supabase!.from('financial_records').select('type, amount, date'),
       supabase!.from('project_integrations').select('project_id'),
 
@@ -140,30 +142,70 @@ export default function AnalyticsPage() {
       approvalRate: reportsData.length ? Math.round((reportsData.filter((r: any) => r.status === 'approved').length / reportsData.length) * 100) : 0,
     };
 
-    // Team performance activity by role
-    const profileById = new Map(profilesData.map((p: any) => [p.id, p]));
+    type ProfileSummary = {
+      id?: string;
+      full_name?: string;
+      email?: string;
+      role?: string;
+    };
+
+    const profileById = new Map<string, ProfileSummary>(profilesData.map((p: any) => [String(p.id), p as ProfileSummary]));
+    const reportStatusCounts: Record<string, number> = {};
+    const reporters: Record<string, { name: string; role: string; reports: number; healthSum: number; confidenceSum: number; }> = {};
+
+    reportsData.forEach((report: any) => {
+      reportStatusCounts[report.status] = (reportStatusCounts[report.status] || 0) + 1;
+      const member = profileById.get(report.member_id);
+      const key = report.member_id || 'unknown';
+      const name = member?.full_name || member?.email || 'Unknown';
+      const role = member?.role || report.report_role || 'unknown';
+      if (!reporters[key]) {
+        reporters[key] = { name, role, reports: 0, healthSum: 0, confidenceSum: 0 };
+      }
+      reporters[key].reports += 1;
+      if (typeof report.operational_health === 'number') {
+        reporters[key].healthSum += report.operational_health;
+      }
+      if (typeof report.confidence_score === 'number') {
+        reporters[key].confidenceSum += report.confidence_score;
+      }
+    });
+
+    const topReporters = Object.values(reporters)
+      .map((reporter) => ({
+        ...reporter,
+        avgHealth: reporter.reports ? Math.round(reporter.healthSum / reporter.reports) : 0,
+        avgConfidence: reporter.reports ? Math.round(reporter.confidenceSum / reporter.reports) : 0,
+      }))
+      .sort((a, b) => b.reports - a.reports)
+      .slice(0, 6);
+
+    const reportStatusDistribution = Object.entries(reportStatusCounts).map(([status, value]) => ({ name: status.replace('_', ' '), value }));
     const roleProjects: Record<string, Set<string>> = {};
     const tasksByRole: Record<string, number> = {};
     const reportsByRole: Record<string, number> = {};
 
     profilesData.forEach((profile: any) => {
-      roleProjects[profile.role] = new Set();
-      tasksByRole[profile.role] = 0;
-      reportsByRole[profile.role] = 0;
+      const role = profile.role || 'unknown';
+      roleProjects[role] = new Set();
+      tasksByRole[role] = 0;
+      reportsByRole[role] = 0;
     });
 
     tasksData.forEach((task: any) => {
       const owner = profileById.get(task.assigned_to);
       if (owner) {
-        tasksByRole[owner.role] = (tasksByRole[owner.role] || 0) + 1;
-        if (task.project_id) roleProjects[owner.role].add(task.project_id);
+        const ownerRole = owner.role || 'unknown';
+        tasksByRole[ownerRole] = (tasksByRole[ownerRole] || 0) + 1;
+        if (task.project_id) roleProjects[ownerRole].add(task.project_id);
       }
     });
 
     reportsData.forEach((report: any) => {
       const author = profileById.get(report.member_id);
       if (author) {
-        reportsByRole[author.role] = (reportsByRole[author.role] || 0) + 1;
+        const authorRole = author.role || 'unknown';
+        reportsByRole[authorRole] = (reportsByRole[authorRole] || 0) + 1;
       }
     });
 
@@ -193,7 +235,7 @@ export default function AnalyticsPage() {
       return sum;
     }, 0);
 
-    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary, reportStats, externalIntegrationCount: integrationsData.length });
+    setData({ projectStats, taskStats, memberActivity, roleDistribution, reportTrend, reportHealthTrend, financeSummary, reportStats, reportStatusDistribution, topReporters, externalIntegrationCount: integrationsData.length });
     setLoading(false);
   };
 
@@ -219,8 +261,8 @@ export default function AnalyticsPage() {
             { label: 'Total Projects', value: totalProjects, icon: FolderKanban, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: 'Total Tasks', value: totalTasks, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-50' },
             { label: 'Live Integrations', value: totalIntegrations, icon: Activity, color: 'text-sky-600', bg: 'bg-sky-50' },
+            { label: 'Total Reports', value: data.reportStats.totalReports, icon: TrendingUp, color: 'text-fuchsia-600', bg: 'bg-fuchsia-50' },
             { label: 'Team Members', value: totalMembers, icon: Users, color: 'text-amber-600', bg: 'bg-amber-50' },
-            { label: 'Task Completion', value: `${completionRate}%`, icon: TrendingUp, color: 'text-teal-600', bg: 'bg-teal-50' },
             { label: 'Avg Confidence', value: `${averageConfidence}%`, icon: DollarSign, color: 'text-violet-600', bg: 'bg-violet-50' },
           ].map(({ label, value, icon: Icon, color, bg }) => (
             <div key={label} className="bg-white rounded-xl border border-border p-5">
@@ -295,6 +337,65 @@ export default function AnalyticsPage() {
               <Legend iconType="circle" iconSize={8} formatter={(v) => <span className="text-xs capitalize">{v}</span>} />
             </AreaChart>
           </ResponsiveContainer>
+        </div>
+
+        {/* Accountability status + contributor summary */}
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-border p-5 xl:col-span-1">
+            <h3 className="font-semibold text-foreground text-sm mb-4">Report status distribution</h3>
+            {data.reportStatusDistribution.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">No report status data</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={data.reportStatusDistribution}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={80}
+                    dataKey="value"
+                    label={({ name, value }) => `${name}: ${value}`}
+                  >
+                    {data.reportStatusDistribution.map((entry, index) => (
+                      <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+
+          <div className="bg-white rounded-xl border border-border p-5 xl:col-span-2">
+            <h3 className="font-semibold text-foreground text-sm mb-4">Top report contributors</h3>
+            {data.topReporters.length === 0 ? (
+              <div className="h-48 flex items-center justify-center text-muted-foreground text-sm">No contributor data</div>
+            ) : (
+              <div className="space-y-3">
+                {data.topReporters.map((reporter, index) => (
+                  <div key={index} className="rounded-2xl border border-border p-4 bg-slate-50">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{reporter.name}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{reporter.role}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-foreground">{reporter.reports} reports</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                      <div className="rounded-xl bg-white border border-border p-3">
+                        <p className="font-semibold text-slate-900">Avg. health</p>
+                        <p>{reporter.avgHealth}%</p>
+                      </div>
+                      <div className="rounded-xl bg-white border border-border p-3">
+                        <p className="font-semibold text-slate-900">Avg. confidence</p>
+                        <p>{reporter.avgConfidence}%</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Finance + Team distribution row */}

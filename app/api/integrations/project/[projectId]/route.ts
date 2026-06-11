@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
 import { fetchExternalIntegrationData } from '@/lib/integrations';
+import { requireUser } from '@/lib/serverAuth';
 
 export async function GET(request: Request, { params }: { params: { projectId: string } }) {
   const { projectId } = params;
@@ -8,6 +9,7 @@ export async function GET(request: Request, { params }: { params: { projectId: s
   const live = url.searchParams.get('live') === 'true';
 
   const supabase = createServerSupabase();
+  await requireUser(supabase);
 
   const { data, error } = await supabase
     .from('project_integrations')

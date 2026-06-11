@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase';
+import { requireUser, requireRole } from '@/lib/serverAuth';
 
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabase();
     const { title, message, type = 'info' } = await request.json();
+    const user = await requireUser(supabase);
+    await requireRole(supabase, user.id, ['admin', 'owner', 'operations']);
     if (!title || !message) {
       return NextResponse.json({ error: 'Missing title or message.' }, { status: 400 });
     }

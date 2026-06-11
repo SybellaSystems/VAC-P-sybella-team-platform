@@ -55,7 +55,7 @@ export default function MessagesPage() {
           table: 'messages',
           filter: `channel_id=eq.${activeChannel.id}`,
         },
-        async (payload) => {
+        async (payload: any) => {
           const nm = payload.new as Message;
 
           let sender: Profile | undefined = members[nm.sender_id];

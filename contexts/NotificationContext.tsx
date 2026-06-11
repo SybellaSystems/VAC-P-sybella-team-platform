@@ -181,7 +181,7 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${profile.id}` },
-        async (payload) => {
+        async (payload: any) => {
           const incoming = payload?.new as Notification | null;
           if (!incoming || incoming.user_id !== profile.id) return;
 

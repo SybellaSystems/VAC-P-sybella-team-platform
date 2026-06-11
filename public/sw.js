@@ -44,15 +44,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/_next/static') || url.pathname.startsWith('/icons') || url.pathname === '/favicon.ico') {
+  const shouldCache =
+    url.pathname.startsWith('/_next/static') ||
+    url.pathname.startsWith('/icons') ||
+    url.pathname === '/favicon.ico' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/projects') ||
+    url.pathname.startsWith('/messages');
+
+  if (shouldCache) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(request).then((cached) => {
           if (cached) return cached;
-          return fetch(request).then((response) => {
-            if (response.ok) cache.put(request, response.clone());
-            return response;
-          });
+          return fetch(request)
+            .then((response) => {
+              if (response.ok) cache.put(request, response.clone());
+              return response;
+            })
+            .catch(() => caches.match(request).then((offlineResponse) => offlineResponse))
         })
       )
     );

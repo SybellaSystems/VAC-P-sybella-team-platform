@@ -54,7 +54,7 @@ export function TaskAssignmentForm({ projectId, taskId, onComplete, onCancel }: 
 
     if (!assignments) return;
 
-    const memberIds = assignments.map(a => a.member_id);
+    const memberIds = assignments.map((a: any) => a.member_id);
     const { data: profiles } = await supabase!
       .from('profiles')
 

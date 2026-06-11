@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiPreferences } from '@/hooks/use-ui-preferences';
 import { navSectionsForRole, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
 import {
@@ -72,11 +73,24 @@ export function MobileNav() {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const { profile } = useAuth();
+  const { prefs, setPref } = useUiPreferences();
   const sections = navSectionsForRole(profile?.role);
+
+  useEffect(() => {
+    if (typeof prefs.mobileNavOpen === 'boolean') {
+      setOpen(prefs.mobileNavOpen);
+    }
+  }, [prefs.mobileNavOpen]);
 
   return (
     <div className="md:hidden fixed top-0 left-0 right-0 z-40 h-14 border-b border-border bg-white flex items-center px-3 gap-2 shadow-sm">
-      <Sheet open={open} onOpenChange={setOpen}>
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          setPref('mobileNavOpen', next);
+        }}
+      >
         <SheetTrigger asChild>
           <button
             type="button"

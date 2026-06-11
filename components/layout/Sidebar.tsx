@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUiPreferences } from '@/hooks/use-ui-preferences';
 import { navSectionsForRole, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
 import { LogOut, ChevronRight } from 'lucide-react';
@@ -86,11 +87,26 @@ const roleColors: Record<Role, string> = {
 export function Sidebar() {
   const pathname = usePathname();
   const { profile, signOut } = useAuth();
+  const { prefs, setPref } = useUiPreferences();
   const sections = navSectionsForRole(profile?.role);
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??';
+
+  const settingsOpen = !!prefs.settingsOpen;
+  const collapsedSections = prefs.collapsedSections ?? {};
+
+  const toggleSettings = () => {
+    setPref('settingsOpen', !settingsOpen);
+  };
+
+  const toggleSection = (title: string) => {
+    setPref('collapsedSections', {
+      ...collapsedSections,
+      [title]: !collapsedSections[title],
+    });
+  };
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 h-screen w-72 flex-col z-30 bg-slate-950 text-white">
@@ -105,11 +121,57 @@ export function Sidebar() {
       </div>
 
       <nav aria-label="Primary navigation" className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
-        {sections.map((section: NavSection) => (
-          <div key={section.title} className="space-y-2">
-            <p className="px-3 text-xs uppercase tracking-[0.24em] text-slate-500">{section.title}</p>
-            <div className="space-y-1">
+        {sections.map((section: NavSection) => {
+          const sectionCollapsed = !!collapsedSections[section.title];
+          return (
+            <div key={section.title} className="space-y-2">
+              <button
+                type="button"
+                onClick={() => toggleSection(section.title)}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 text-xs uppercase tracking-[0.24em] text-slate-500 hover:text-white hover:bg-slate-900 rounded-2xl transition-colors"
+              >
+                <span>{section.title}</span>
+                <ChevronRight
+                  size={14}
+                  className={cn(
+                    'transition-transform',
+                    sectionCollapsed ? 'rotate-0' : 'rotate-90'
+                  )}
+                />
+              </button>
+              <div className={cn('space-y-1', sectionCollapsed && 'hidden')}>
               {section.items.map((item) => {
+                // Make Settings expandable to show workspace settings for admins
+                if (item.href === '/settings') {
+                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                  const isAdmin = !!profile?.role && ['admin', 'owner'].includes(profile.role as string);
+                  return (
+                    <div key={item.href}>
+                      <button
+                        type="button"
+                        onClick={toggleSettings}
+                        className={cn(
+                          'group w-full flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-colors text-left',
+                          isActive ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                        )}
+                      >
+                        <NavIcon name={item.icon} />
+                        <span>{item.label}</span>
+                        <ChevronRight size={14} className={cn('ml-auto transition-transform', settingsOpen ? 'rotate-90' : '')} />
+                      </button>
+
+                      {settingsOpen && (
+                        <div className="mt-2 ml-8 space-y-1">
+                          <Link href="/settings" className="block text-slate-300 hover:text-white text-sm">Profile settings</Link>
+                          {isAdmin && (
+                            <Link href="/settings/workspace" className="block text-slate-300 hover:text-white text-sm">Workspace settings</Link>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
                   <Link
@@ -130,7 +192,8 @@ export function Sidebar() {
               })}
             </div>
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       <div className="px-4 pb-4 pt-3 border-t border-white/10">

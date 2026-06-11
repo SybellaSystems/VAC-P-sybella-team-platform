@@ -40,10 +40,13 @@ const WORKSPACE: NavSection = {
   title: 'Workspace',
   items: [
     DASHBOARD,
+    { href: '/settings', label: 'Settings', icon: 'Settings', roles: ALL_ROLES },
     { href: '/accountability', label: 'Accountability', icon: 'ClipboardList', roles: ALL_ROLES },
     { href: '/approvals', label: 'Approvals', icon: 'CheckSquare', roles: ['admin', 'director', 'hr', 'manager', 'finance'] },
     { href: '/messages', label: 'Messages', icon: 'MessageSquare', roles: ALL_ROLES },
     { href: '/notifications', label: 'Notifications', icon: 'Bell', roles: ['admin'] },
+    { href: '/billing', label: 'Billing', icon: 'CreditCard', roles: ['admin', 'finance'] },
+    { href: '/marketing', label: 'Marketing', icon: 'Megaphone', roles: ['marketing_manager', 'admin'] },
   ],
 };
 
@@ -67,6 +70,10 @@ const FINANCE_AND_GOVERNANCE: NavSection = {
     { href: '/audit-logs', label: 'Audit logs', icon: 'ScrollText', roles: ['admin', 'director'] },
     { href: '/legal', label: 'Legal', icon: 'Scale', roles: ['legal_counsel', 'admin', 'director'] },
     { href: '/analytics', label: 'Analytics', icon: 'BarChart3', roles: ['admin', 'director', 'manager', 'finance', 'marketing_manager'] },
+    { href: '/import-center', label: 'Import Center', icon: 'ScrollText', roles: ['admin', 'director', 'manager', 'finance'] },
+    { href: '/automation', label: 'Automation', icon: 'Shield', roles: ['admin', 'director', 'operations', 'manager'] },
+    { href: '/assets', label: 'Asset vault', icon: 'Briefcase', roles: ['admin', 'director', 'finance', 'operations'] },
+    { href: '/quality', label: 'Quality', icon: 'Shield', roles: ['admin', 'director', 'qa', 'manager'] },
   ],
 };
 

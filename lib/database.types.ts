@@ -34,6 +34,7 @@ export type Profile = {
     email?: boolean;
     dnd?: boolean;
   };
+  ui_preferences?: Record<string, any>;
 };
 
 export type Customer = {
@@ -383,6 +384,58 @@ export type ProjectTemplate = {
   custom_fields?: ProjectCustomField[];
   is_public: boolean;
   created_by: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MarketingCampaign = {
+  id: string;
+  name: string;
+  description: string;
+  status: 'planning' | 'active' | 'paused' | 'completed';
+  owner_id: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  budget: number;
+  leads_target: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContentCalendarItem = {
+  id: string;
+  campaign_id: string;
+  title: string;
+  scheduled_date: string;
+  content_type: 'blog' | 'email' | 'social' | 'event' | 'webinar' | 'press_release' | 'other';
+  owner_id: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MarketingAsset = {
+  id: string;
+  title: string;
+  file_name: string;
+  file_type: string;
+  file_size: number;
+  uploaded_by: string | null;
+  preview_url: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AutomationRule = {
+  id: string;
+  name: string;
+  rule_type: 'project_due_reminder' | 'task_blocked_alert' | 'report_followup' | 'campaign_progress_alert';
+  target_project_id: string | null;
+  schedule: string;
+  payload: Record<string, any> | null;
+  enabled: boolean;
+  last_run_at: string | null;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 };

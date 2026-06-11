@@ -59,11 +59,11 @@ export default function DashboardPage() {
       ]);
 
       const projectsByStatus: Record<string, number> = {};
-      projects?.forEach(p => {
+      projects?.forEach((p: any) => {
         projectsByStatus[p.status] = (projectsByStatus[p.status] || 0) + 1;
       });
 
-      const revenue = finance?.reduce((sum, r) => sum + (r.amount || 0), 0) ?? 0;
+      const revenue = finance?.reduce((sum: number, r: any) => sum + (r.amount || 0), 0) ?? 0;
 
       const monthlyMap: Record<string, { revenue: number; expenses: number }> = {};
 
@@ -109,12 +109,12 @@ export default function DashboardPage() {
 
       setStats({
         totalTeam: teamCount ?? 0,
-        activeProjects: projects?.filter(p => p.status === 'active').length ?? 0,
+        activeProjects: projects?.filter((p: any) => p.status === 'active').length ?? 0,
         totalCustomers: custCount ?? 0,
         monthlyRevenue: revenue,
-        tasksCompleted: tasks?.filter(t => t.status === 'done').length ?? 0,
-        tasksPending: tasks?.filter(t => t.status === 'todo' || t.status === 'in_progress').length ?? 0,
-        tasksBlocked: tasks?.filter(t => t.status === 'blocked').length ?? 0,
+        tasksCompleted: tasks?.filter((t: any) => t.status === 'done').length ?? 0,
+        tasksPending: tasks?.filter((t: any) => t.status === 'todo' || t.status === 'in_progress').length ?? 0,
+        tasksBlocked: tasks?.filter((t: any) => t.status === 'blocked').length ?? 0,
         projectsByStatus,
       });
       setRecentProjects((projects || []).slice(0, 5) as Project[]);

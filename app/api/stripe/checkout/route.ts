@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
+import { createServerSupabase } from '@/lib/supabase';
+import { requireUser } from '@/lib/serverAuth';
 
 export async function POST(request: Request) {
   try {
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const { plan } = await request.json();
+
+    const supabase = createServerSupabase();
+    await requireUser(supabase);
 
     if (!stripeSecretKey) {
       return NextResponse.json({ error: 'Stripe secret key is not configured.' }, { status: 500 });

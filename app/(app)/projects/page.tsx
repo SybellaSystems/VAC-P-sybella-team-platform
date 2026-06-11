@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
+import Skeleton from '@/components/Skeleton';
+import EmptyState from '@/components/EmptyState';
+import { useRouter } from 'next/navigation';
 
 import type {
   Project,
@@ -41,6 +44,7 @@ const emptyForm = (): Partial<Project> => ({
 
 export default function ProjectsPage() {
   const { profile } = useAuth();
+  const router = useRouter();
 
   const sb = supabase; // ✅ SAFE SINGLE SOURCE
 
@@ -116,7 +120,7 @@ export default function ProjectsPage() {
 
     sb?.from('profiles')
       .select('*')
-      .then(({ data }) => setMembers((data as Profile[]) || []));
+      .then((result: any) => setMembers((result.data as Profile[]) || []));
   }, []);
 
   // ---------------- CREATE PROJECT ----------------
@@ -202,7 +206,7 @@ export default function ProjectsPage() {
 
           {canManage && (
             <button
-              onClick={() => setShowModal(true)}
+              onClick={() => router.push('/projects/new')}
               className="px-4 py-2 bg-black text-white rounded"
             >
               New Project
@@ -212,30 +216,49 @@ export default function ProjectsPage() {
 
         {/* LIST */}
         {loading ? (
-          <p>Loading...</p>
-        ) : (
           <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="border p-3 rounded">
+                <Skeleton lines={2} />
+              </div>
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            title="No projects yet"
+            description="Create your first project to get started."
+            action={
+              canManage && (
+                <button onClick={() => router.push('/projects/new')} className="px-4 py-2 bg-black text-white rounded">
+                  New Project
+                </button>
+              )
+            }
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map((p) => (
               <div
                 key={p.id}
-                className="border p-3 rounded cursor-pointer"
+                className="border p-4 rounded cursor-pointer hover:shadow-sm"
                 onClick={() => {
                   setSelectedProject(p);
                   loadTasks(p.id);
                 }}
               >
-                <div className="font-semibold">{p.name}</div>
-                <div className="text-sm text-gray-500">
+                <div className="font-semibold text-base truncate">{p.name}</div>
+                <div className="text-sm text-gray-500 mt-2 line-clamp-3">
                   {p.description}
                 </div>
-                <div className="text-xs">{p.status}</div>
+                <div className="text-xs mt-3">{p.status}</div>
 
                 {canManage && (
                   <button
-                    onClick={() =>
-                      handleStatusUpdate(p.id, 'active')
-                    }
-                    className="text-xs text-blue-600"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleStatusUpdate(p.id, 'active');
+                    }}
+                    className="text-xs text-blue-600 mt-2"
                   >
                     Mark Active
                   </button>
