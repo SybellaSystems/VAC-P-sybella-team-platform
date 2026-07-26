@@ -1,628 +1,266 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { formatDistanceToNowStrict } from 'date-fns';
-import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useAuth } from '@/contexts/AuthContext';
-import { canEditWiki } from '@/lib/rbac';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { TopBar } from '@/components/layout/TopBar';
+import { useAuth } from '@/contexts/AuthContext';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
-import { Search, Plus, Pencil, Sparkles, ChevronRight } from 'lucide-react';
-import { logAudit } from '@/lib/audit';
-import { createWikiPage, fetchWikiPages, updateWikiPage, wikiTemplates, type WikiPage } from '@/lib/queries';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { BookOpen, Plus, Search, FileText, CreditCard as Edit, Eye } from 'lucide-react';
+import { toast } from 'sonner';
+import { canEditWiki } from '@/lib/rbac';
+import type { WikiPage } from '@/lib/database.types';
 
-type WikiForm = {
-  slug: string;
-  title: string;
-  summary: string;
-  content: string;
-  is_published: boolean;
-  metadata: {
-    category?: string;
-    tags?: string[];
-    featured?: boolean;
-  };
-};
-
-const initialForm: WikiForm = {
-  slug: '',
-  title: '',
-  summary: '',
-  content: '',
-  is_published: true,
-  metadata: {
-    category: '',
-    tags: [],
-    featured: false,
-  },
-};
-
-export default function WikiPageRoute() {
-  useDocumentTitle('Wiki | VAC-P');
+export default function WikiPage() {
   const { profile } = useAuth();
-  const [q, setQ] = useState('');
+
   const [pages, setPages] = useState<WikiPage[]>([]);
   const [loading, setLoading] = useState(true);
-  const [readPage, setReadPage] = useState<WikiPage | null>(null);
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [editing, setEditing] = useState<WikiPage | null>(null);
-  const [wizardStep, setWizardStep] = useState(1);
-  const [form, setForm] = useState<WikiForm>(initialForm);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedPage, setSelectedPage] = useState<WikiPage | null>(null);
+  const [showCreateDialog, setShowCreateDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
+
+  const [newPage, setNewPage] = useState({
+    title: '',
+    content: '',
+    summary: '',
+    category: 'general',
+  });
+
+  useEffect(() => {
+    fetchPages();
+  }, []);
+
+  async function fetchPages() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('wiki_pages')
+        .select('*')
+        .eq('is_published', true)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPages(data || []);
+    } catch (error) {
+      console.error('Error fetching wiki pages:', error);
+      toast.error('Failed to load wiki pages');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreatePage() {
+    if (!profile) return;
+
+    try {
+      const slug = newPage.title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+      const { error } = await supabase.from('wiki_pages').insert({
+        title: newPage.title,
+        slug,
+        content: newPage.content,
+        summary: newPage.summary,
+        is_published: true,
+        published_at: new Date().toISOString(),
+        created_by_user_id: profile.id,
+        metadata: { category: newPage.category },
+      });
+
+      if (error) throw error;
+
+      toast.success('Wiki page created');
+      setShowCreateDialog(false);
+      setNewPage({ title: '', content: '', summary: '', category: 'general' });
+      fetchPages();
+    } catch (error) {
+      console.error('Error creating page:', error);
+      toast.error('Failed to create page');
+    }
+  }
+
+  async function handleUpdatePage() {
+    if (!selectedPage) return;
+
+    try {
+      const { error } = await supabase
+        .from('wiki_pages')
+        .update({
+          title: newPage.title,
+          content: newPage.content,
+          summary: newPage.summary,
+        })
+        .eq('id', selectedPage.id);
+
+      if (error) throw error;
+
+      toast.success('Wiki page updated');
+      setShowEditDialog(false);
+      fetchPages();
+    } catch (error) {
+      console.error('Error updating page:', error);
+      toast.error('Failed to update page');
+    }
+  }
+
+  const filteredPages = pages.filter(page =>
+    page.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    page.content.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const canEdit = canEditWiki(profile?.role);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    const { data } = await fetchWikiPages();
-    setPages(data ?? []);
-    setLoading(false);
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    const channel = supabase
-      .channel('public:wiki_pages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'wiki_pages' }, () => {
-        void load();
-      })
-      .subscribe();
-
-    return () => {
-      void supabase.removeChannel(channel);
-    };
-  }, [load]);
-
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    if (!query) return pages;
-    return pages.filter((page) => {
-      const hay = `${page.title} ${page.slug} ${page.summary ?? ''} ${page.content}`.toLowerCase();
-      return hay.includes(query);
-    });
-  }, [pages, q]);
-
-  const openCreate = () => {
-    setEditing(null);
-    setWizardStep(1);
-    setForm(initialForm);
-    setEditorOpen(true);
-  };
-
-  const openEdit = (page: WikiPage) => {
-    setEditing(page);
-    setWizardStep(1);
-    setForm({
-      slug: page.slug,
-      title: page.title,
-      summary: page.summary || '',
-      content: page.content,
-      is_published: page.is_published,
-      metadata: {
-        category: page.metadata?.category || '',
-        tags: page.metadata?.tags || [],
-        featured: page.metadata?.featured || false,
-      },
-    });
-    setEditorOpen(true);
-  };
-
-  const saveWiki = async () => {
-    if (!profile) return;
-    const slug = form.slug.trim().toLowerCase().replace(/\s+/g, '-');
-    if (!slug || !form.title.trim()) return;
-
-    if (editing) {
-      await updateWikiPage(editing.id, {
-        slug,
-        title: form.title.trim(),
-        summary: form.summary.trim() || null,
-        content: form.content,
-        is_published: form.is_published,
-        metadata: {
-          category: form.metadata.category,
-          tags: form.metadata.tags,
-          featured: form.metadata.featured,
-        },
-      });
-      await logAudit({ event_type: 'wiki.updated', entity_type: 'wiki_page', entity_id: editing.id, action: 'update' });
-    } else {
-      const { data } = await createWikiPage({
-        slug,
-        title: form.title.trim(),
-        summary: form.summary.trim() || null,
-        content: form.content || '',
-        is_published: form.is_published,
-        created_by_auth_user_id: profile.id,
-        metadata: {
-          category: form.metadata.category,
-          tags: form.metadata.tags,
-          featured: form.metadata.featured,
-        },
-      });
-      const created = data?.[0] as WikiPage | undefined;
-      if (created?.id) {
-        await logAudit({ event_type: 'wiki.created', entity_type: 'wiki_page', entity_id: created.id, action: 'insert' });
-      }
-    }
-
-    setEditorOpen(false);
-    await load();
-  };
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-full">
-      <TopBar title="Wiki" subtitle="Knowledge base — policies, guides, FAQs" />
-      <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_0.9fr]">
-          <section className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-sm uppercase tracking-[0.24em] text-primary">Knowledge newsroom</p>
-                <h2 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">A modern wiki designed like a newsroom.</h2>
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Discover polished playbooks, release notes, policies, FAQs, and team guides with curated templates, featured stories, and real-time update sync.
-                </p>
-              </div>
-              {canEdit && (
-                <Button className="w-full max-w-xs justify-center lg:w-auto" onClick={openCreate}>
-                  <Plus size={16} />
-                  Create knowledge page
-                </Button>
-              )}
-            </div>
-
-            <div className="mt-6 grid gap-3 sm:grid-cols-3">
-              {[
-                { label: 'Total pages', value: pages.length },
-                { label: 'Live stories', value: pages.filter((page) => page.is_published).length },
-                { label: 'Featured articles', value: pages.filter((page) => page.metadata?.featured).length },
-              ].map((item) => (
-                <div key={item.label} className="rounded-3xl border border-border bg-white p-4 text-sm">
-                  <p className="text-2xl font-semibold text-foreground">{item.value}</p>
-                  <p className="text-xs uppercase tracking-[0.24em] text-muted-foreground mt-1">{item.label}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="mt-6 flex flex-wrap gap-2">
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Curated templates</span>
-              <span className="rounded-full bg-secondary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-secondary">Featured stories</span>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-amber-800">Real-time updates</span>
-            </div>
-          </section>
-
-          <aside className="space-y-4">
-            <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-              <CardHeader>
-                <CardTitle>Trending knowledge</CardTitle>
-                <CardDescription>Most active categories in your shared wiki.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {pages.slice(0, 6).map((page) => (
-                  <button
-                    key={page.id}
-                    type="button"
-                    onClick={() => setReadPage(page)}
-                    className="w-full rounded-3xl border border-border bg-white p-4 text-left transition hover:border-primary/60"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-foreground">{page.title}</p>
-                      <span className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{page.metadata?.category || 'General'}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground line-clamp-2">{page.summary || page.content.slice(0, 90) + '...'}</p>
-                  </button>
-                ))}
-                {pages.length === 0 && <p className="text-sm text-muted-foreground">No pages yet. Create the first knowledge article.</p>}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-              <CardHeader>
-                <CardTitle>Quick filters</CardTitle>
-                <CardDescription>Find policies, release notes, and workflows fast.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {['All', 'Policy', 'How-to', 'Release', 'FAQ', 'Executive'].map((name) => (
-                    <button
-                      key={name}
-                      type="button"
-                      onClick={() => setQ(name === 'All' ? '' : name)}
-                      className="rounded-2xl border border-border bg-white px-4 py-2 text-left text-sm font-semibold text-foreground transition hover:bg-primary/5"
-                    >
-                      {name}
-                    </button>
-                  ))}
-                </div>
-                <div className="rounded-3xl border border-dashed border-border bg-muted/70 p-4 text-sm text-muted-foreground">
-                  Start a new page with a framework that matches your story type and keep every team page crisp.
-                </div>
-              </CardContent>
-            </Card>
-          </aside>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Wiki</h1>
+          <p className="text-slate-600">Company knowledge base and documentation</p>
         </div>
-
-        <div className="grid gap-4 lg:grid-cols-[1.35fr_0.65fr]">
-          <div className="space-y-5">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex-1 min-w-0">
-                <div className="relative max-w-xl">
-                  <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                  <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search inspiration, policy titles, or playbooks…" className="pl-9" />
+        {canEdit && (
+          <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                New Page
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create Wiki Page</DialogTitle>
+                <DialogDescription>Add new documentation to the knowledge base</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Title</label>
+                  <Input value={newPage.title} onChange={e => setNewPage({ ...newPage, title: e.target.value })} placeholder="Page title" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Summary</label>
+                  <Input value={newPage.summary} onChange={e => setNewPage({ ...newPage, summary: e.target.value })} placeholder="Brief summary" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Content (Markdown supported)</label>
+                  <Textarea value={newPage.content} onChange={e => setNewPage({ ...newPage, content: e.target.value })} placeholder="Write your content here..." rows={12} />
                 </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{pages.length} pages</span>
-                <span className="rounded-full border border-border bg-background px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-muted-foreground">{filtered.length} matches</span>
-              </div>
-            </div>
-
-            {loading ? (
-              <div className="rounded-3xl border border-border bg-background p-8 text-center text-sm text-muted-foreground">Loading updated wiki stories…</div>
-            ) : (
-              <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-                <div className="space-y-4">
-                  {filtered.slice(0, 1).map((page) => (
-                    <article key={page.id} className="group overflow-hidden rounded-[2rem] border border-border bg-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl">
-                      <div className="p-8">
-                        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-primary">
-                          <Sparkles size={14} />
-                          <span>{page.metadata?.category || 'General'}</span>
-                        </div>
-                        <h3 className="mt-4 text-3xl font-semibold text-foreground">{page.title}</h3>
-                        <p className="mt-4 text-sm leading-7 text-muted-foreground">{page.summary || page.content.slice(0, 160) + '...'}</p>
-                        <div className="mt-6 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                          <span>{page.is_published ? 'Published' : 'Draft'}</span>
-                          <span>•</span>
-                          <span>{formatDistanceToNowStrict(new Date(page.updated_at), { addSuffix: true })}</span>
-                        </div>
-                      </div>
-                      <div className="border-t border-slate-200 bg-slate-50 px-8 py-4">
-                        <Button variant="outline" className="w-full justify-between" onClick={() => setReadPage(page)}>
-                          Read the story
-                          <ChevronRight size={16} />
-                        </Button>
-                      </div>
-                    </article>
-                  ))}
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {filtered.slice(1, 5).map((page) => (
-                      <button
-                        key={page.id}
-                        type="button"
-                        onClick={() => setReadPage(page)}
-                        className="text-left rounded-3xl border border-border bg-white p-6 shadow-sm transition hover:border-primary/40 hover:shadow-md"
-                      >
-                        <div className="flex items-center justify-between gap-3">
-                          <h4 className="text-lg font-semibold text-foreground">{page.title}</h4>
-                          <span className="text-[11px] uppercase tracking-[0.24em] text-muted-foreground">{page.is_published ? 'Live' : 'Draft'}</span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-muted-foreground line-clamp-3">{page.summary || page.content.slice(0, 100) + '...'}</p>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-                    <CardHeader>
-                      <CardTitle>Trending topics</CardTitle>
-                      <CardDescription>What your team reads most often.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-wrap gap-2">
-                      {filtered.length === 0 ? (
-                        <span className="rounded-full bg-muted px-3 py-1 text-muted-foreground">No topics yet</span>
-                      ) : (
-                        Array.from(new Set(filtered.map((page) => page.metadata?.category || 'General')))
-                          .slice(0, 10)
-                          .map((topic) => (
-                            <span key={topic} className="rounded-full border border-border bg-white px-3 py-1 text-xs font-semibold text-foreground">
-                              {topic}
-                            </span>
-                          ))
-                      )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-                    <CardHeader>
-                      <CardTitle>Quick filters</CardTitle>
-                      <CardDescription>Find policies, release notes, and records fast.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {['All', 'Policy', 'Guide', 'Release', 'FAQ', 'Executive'].map((name) => (
-                          <button
-                            key={name}
-                            type="button"
-                            onClick={() => setQ(name === 'All' ? '' : name)}
-                            className="rounded-2xl border border-border bg-white px-4 py-2 text-left text-sm font-semibold text-foreground transition hover:bg-primary/5"
-                          >
-                            {name}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="rounded-3xl border border-dashed border-border bg-muted/70 p-4 text-sm text-muted-foreground">
-                        Start a new page with a framework that matches your story type and keep every team page crisp.
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <aside className="space-y-4">
-            <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-              <CardHeader>
-                <CardTitle>Editor's notes</CardTitle>
-                <CardDescription>Use the template wizard to build beautiful articles faster.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {wikiTemplates.slice(0, 3).map((template) => (
-                  <div key={template.key} className="rounded-3xl border border-border bg-white p-4 shadow-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{template.label}</p>
-                        <p className="text-xs text-muted-foreground">{template.description}</p>
-                      </div>
-                      <span className="rounded-full bg-primary/10 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-                        {template.key}
-                      </span>
-                    </div>
-                    <p className="mt-3 text-sm text-muted-foreground">{template.summary}</p>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
-            <Card className="rounded-3xl border border-border bg-background p-6 shadow-sm">
-              <CardHeader>
-                <CardTitle>Featured stories</CardTitle>
-                <CardDescription>Hand-picked knowledge articles to inspire your next page.</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {pages.filter((page) => page.metadata?.featured).slice(0, 4).map((page) => (
-                  <button key={page.id} type="button" onClick={() => setReadPage(page)} className="w-full text-left rounded-3xl border border-border bg-white p-4 text-sm hover:border-primary/60">
-                    <div className="font-semibold text-foreground">{page.title}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{page.summary ?? 'Featured insight'}</div>
-                  </button>
-                ))}
-                {pages.filter((page) => page.metadata?.featured).length === 0 && (
-                  <p className="text-sm text-muted-foreground">Add featured articles for fast discovery.</p>
-                )}
-              </CardContent>
-            </Card>
-          </aside>
-        </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
+                <Button onClick={handleCreatePage}>Create Page</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
-      <Dialog open={!!readPage} onOpenChange={(o) => !o && setReadPage(null)}>
-        <DialogContent className="max-w-4xl max-h-[calc(100vh-6rem)] overflow-y-auto">
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+        <Input
+          placeholder="Search wiki..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="pl-10"
+        />
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        {filteredPages.length === 0 ? (
+          <Card className="col-span-full">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <BookOpen className="h-12 w-12 text-slate-300 mb-4" />
+              <p className="text-slate-500">No wiki pages found</p>
+            </CardContent>
+          </Card>
+        ) : (
+          filteredPages.map(page => (
+            <Card key={page.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedPage(page)}>
+              <CardHeader>
+                <div className="flex items-start justify-between">
+                  <div className="p-2 rounded-lg bg-blue-100">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                  </div>
+                  {canEdit && (
+                    <Button variant="ghost" size="sm" onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPage(page);
+                      setNewPage({ title: page.title, content: page.content, summary: page.summary || '', category: 'general' });
+                      setShowEditDialog(true);
+                    }}>
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <CardTitle className="text-lg">{page.title}</CardTitle>
+                <CardDescription>{page.summary || 'No summary available'}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2 text-xs text-slate-500">
+                  <Eye className="h-3 w-3" />
+                  <span>Updated {new Date(page.updated_at).toLocaleDateString()}</span>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+      </div>
+
+      {/* Edit Dialog */}
+      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle className="pr-8">{readPage?.title}</DialogTitle>
-            <p className="text-xs text-muted-foreground">/{readPage?.slug}</p>
+            <DialogTitle>Edit Wiki Page</DialogTitle>
           </DialogHeader>
-          <div className="mb-4 flex flex-wrap items-center gap-2">
-            {readPage?.metadata?.category && (
-              <span className="rounded-full bg-primary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-primary">
-                {readPage.metadata.category}
-              </span>
-            )}
-            {readPage?.metadata?.template && (
-              <span className="rounded-full bg-secondary/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-secondary">
-                {readPage.metadata.template}
-              </span>
-            )}
-            {readPage?.metadata?.featured && (
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.24em] text-amber-800">
-                Featured
-              </span>
-            )}
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-medium">Title</label>
+              <Input value={newPage.title} onChange={e => setNewPage({ ...newPage, title: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Summary</label>
+              <Input value={newPage.summary} onChange={e => setNewPage({ ...newPage, summary: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Content</label>
+              <Textarea value={newPage.content} onChange={e => setNewPage({ ...newPage, content: e.target.value })} rows={12} />
+            </div>
           </div>
-          {readPage?.summary ? <p className="text-sm text-muted-foreground border-b border-border pb-3">{readPage.summary}</p> : null}
-          <article className="prose prose-slate max-w-none dark:prose-invert pt-2">
-            {readPage?.content.split(/\n{2,}/).map((block, index) => {
-              if (!block.trim()) return null;
-              if (block.startsWith('### ')) return <h3 key={index}>{block.slice(4)}</h3>;
-              if (block.startsWith('## ')) return <h2 key={index}>{block.slice(3)}</h2>;
-              if (block.startsWith('# ')) return <h1 key={index}>{block.slice(2)}</h1>;
-              if (block.startsWith('> ')) return <blockquote key={index}>{block.slice(2)}</blockquote>;
-              return <p key={index}>{block}</p>;
-            })}
-          </article>
-          <DialogFooter className="gap-2 sm:gap-0">
-            {canEdit && readPage && (
-              <Button
-                variant="outline"
-                className="gap-2"
-                onClick={() => {
-                  openEdit(readPage);
-                  setReadPage(null);
-                }}
-              >
-                <Pencil size={14} />
-                Edit
-              </Button>
-            )}
-            <Button variant="secondary" onClick={() => setReadPage(null)}>
-              Close
-            </Button>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancel</Button>
+            <Button onClick={handleUpdatePage}>Save Changes</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      <Dialog open={editorOpen} onOpenChange={setEditorOpen}>
-        <DialogContent className="max-w-3xl max-h-[calc(100vh-6rem)] overflow-y-auto">
+      {/* View Dialog */}
+      <Dialog open={!!selectedPage && !showEditDialog} onOpenChange={() => setSelectedPage(null)}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editing ? 'Edit wiki page' : 'New knowledge page'}</DialogTitle>
-            <p className="text-xs text-muted-foreground">Step {wizardStep} of 4</p>
+            <DialogTitle>{selectedPage?.title}</DialogTitle>
+            <DialogDescription>{selectedPage?.summary}</DialogDescription>
           </DialogHeader>
-
-          {wizardStep === 1 && (
-            <div className="space-y-4 py-2">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-xs font-medium">URL slug</label>
-                  <Input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} placeholder="e.g. remote-work-policy" className="mt-1" />
-                </div>
-                <div>
-                  <label className="text-xs font-medium">Title</label>
-                  <Input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="Page title" className="mt-1" />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium">Template</label>
-                <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                  {wikiTemplates.map((template) => (
-                    <button
-                      key={template.key}
-                      type="button"
-                      onClick={() => {
-                        setForm((current) => ({
-                          ...current,
-                          summary: current.summary || template.summary,
-                          content: current.content || template.content,
-                          slug: current.slug || template.label.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-                        }));
-                      }}
-                      className="rounded-3xl border border-border bg-white p-4 text-left shadow-sm transition hover:border-primary/70"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm font-semibold text-foreground">{template.label}</span>
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">{template.description}</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {wizardStep === 2 && (
-            <div className="space-y-4 py-2">
-              <div>
-                <label className="text-xs font-medium">Summary</label>
-                <Input value={form.summary} onChange={(e) => setForm({ ...form, summary: e.target.value })} placeholder="Short overview for cards and search" className="mt-1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium">Body</label>
-                <Textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={12} className="mt-1" />
-              </div>
-            </div>
-          )}
-
-          {wizardStep === 3 && (
-            <div className="space-y-4 py-2">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-xs font-medium">Category</label>
-                  <Input
-                    value={form.metadata.category ?? ''}
-                    onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, category: e.target.value } })}
-                    placeholder="e.g. Policy, Guide, Release"
-                    className="mt-1"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-medium">Tags</label>
-                  <Input
-                    value={form.metadata.tags?.join(', ') ?? ''}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        metadata: {
-                          ...form.metadata,
-                          tags: e.target.value
-                            .split(',')
-                            .map((tag) => tag.trim())
-                            .filter(Boolean),
-                        },
-                      })
-                    }
-                    placeholder="Tag1, Tag2, Team"
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-              <div className="flex items-center gap-3 rounded-3xl border border-border bg-muted/50 p-4">
-                <label className="flex items-center gap-2 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    checked={form.metadata.featured ?? false}
-                    onChange={(e) => setForm({ ...form, metadata: { ...form.metadata, featured: e.target.checked } })}
-                    className="rounded border-input"
-                  />
-                  Feature this page for homepage discovery
-                </label>
-              </div>
-            </div>
-          )}
-
-          {wizardStep === 4 && (
-            <div className="space-y-4 py-2">
-              <div className="rounded-3xl border border-border bg-background p-6">
-                <h3 className="text-base font-semibold text-foreground">Review before publishing</h3>
-                <p className="mt-2 text-sm text-muted-foreground">Check the title, slug, summary, and category. This is your team's primary source of truth.</p>
-                <div className="mt-4 space-y-3 text-sm text-muted-foreground">
-                  <div>
-                    <p className="font-semibold text-foreground">Title</p>
-                    <p>{form.title || 'Untitled'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">Slug</p>
-                    <p>{form.slug || 'auto-generated'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">Summary</p>
-                    <p>{form.summary || 'No summary provided.'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">Category</p>
-                    <p>{form.metadata.category || 'General'}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground">Featured</p>
-                    <p>{form.metadata.featured ? 'Yes' : 'No'}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {wizardStep > 1 ? (
-              <Button type="button" variant="outline" onClick={() => setWizardStep((s) => s - 1)}>
-                Back
-              </Button>
-            ) : (
-              <Button type="button" variant="ghost" onClick={() => setEditorOpen(false)}>
-                Cancel
-              </Button>
-            )}
-            {wizardStep < 4 ? (
-              <Button
-                type="button"
-                onClick={() => setWizardStep((s) => s + 1)}
-                disabled={wizardStep === 1 && (!form.slug.trim() || !form.title.trim())}
-              >
-                Next
-              </Button>
-            ) : (
-              <Button type="button" onClick={() => void saveWiki()}>
-                Save page
-              </Button>
-            )}
-          </DialogFooter>
+          <div className="prose prose-slate max-w-none">
+            <pre className="whitespace-pre-wrap text-sm">{selectedPage?.content}</pre>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

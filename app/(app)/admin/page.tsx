@@ -5,7 +5,6 @@ import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Profile, Role } from '@/lib/database.types';
-import { ALL_ROLES } from '@/lib/rbac';
 import { UserPlus, Shield, Users, Mail, X, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle } from 'lucide-react';
 
 const roleColors: Record<string, string> = {
@@ -18,9 +17,20 @@ const roleColors: Record<string, string> = {
   sales: 'bg-teal-100 text-teal-700',
   hr: 'bg-violet-100 text-violet-700',
   finance: 'bg-cyan-100 text-cyan-700',
-  legal_counsel: 'bg-slate-200 text-slate-800',
-  marketing_manager: 'bg-fuchsia-100 text-fuchsia-800',
 };
+
+const defaultTeam = [
+  { email: 'alice@sybellasystems.com', name: 'Alice Uwimana', role: 'admin' },
+  { email: 'brian@sybellasystems.com', name: 'Brian Nkurunziza', role: 'director' },
+  { email: 'christine@sybellasystems.com', name: 'Christine Mukamana', role: 'manager' },
+  { email: 'david@sybellasystems.com', name: 'David Habimana', role: 'developer' },
+  { email: 'esther@sybellasystems.com', name: 'Esther Ingabire', role: 'developer' },
+  { email: 'frank@sybellasystems.com', name: 'Frank Bizimana', role: 'designer' },
+  { email: 'grace@sybellasystems.com', name: 'Grace Uwase', role: 'qa' },
+  { email: 'henry@sybellasystems.com', name: 'Henry Ndayishimiye', role: 'sales' },
+  { email: 'isabelle@sybellasystems.com', name: 'Isabelle Mutesi', role: 'finance' },
+];
+
 export default function AdminPage() {
   const { profile } = useAuth();
   const [members, setMembers] = useState<Profile[]>([]);
@@ -39,8 +49,7 @@ export default function AdminPage() {
   }, [isAdmin]);
 
   const loadMembers = async () => {
-    const { data } = await supabase!.from('profiles').select('*').order('full_name');
-
+    const { data } = await supabase.from('profiles').select('*').order('full_name');
     setMembers((data as Profile[]) || []);
     setLoading(false);
   };
@@ -53,8 +62,7 @@ export default function AdminPage() {
     setSaving(true);
     setError('');
 
-    const { data, error: signUpError } = await supabase!.auth.signUp({
-
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: inviteForm.email,
       password: inviteForm.password,
       options: {
@@ -74,17 +82,13 @@ export default function AdminPage() {
   };
 
   const toggleActive = async (id: string, current: boolean) => {
-    await supabase!.from('profiles').update({ is_active: !current }).eq('id', id);
-
-
-    // Avoid updater-callback typing issues during build by refetching.
-    await loadMembers();
+    await supabase.from('profiles').update({ is_active: !current }).eq('id', id);
+    setMembers(prev => prev.map(m => m.id === id ? { ...m, is_active: !current } : m));
   };
 
   const updateRole = async (id: string, role: Role) => {
-    await supabase!.from('profiles').update({ role }).eq('id', id);
-
-    await loadMembers();
+    await supabase.from('profiles').update({ role }).eq('id', id);
+    setMembers(prev => prev.map(m => m.id === id ? { ...m, role } : m));
   };
 
   if (!isAdmin) {
@@ -151,6 +155,24 @@ export default function AdminPage() {
           </button>
         </div>
 
+        {/* Default team reference */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <AlertTriangle size={15} className="text-amber-600" />
+            <p className="text-sm font-semibold text-amber-800">Sybella Systems — Predefined Team</p>
+          </div>
+          <p className="text-xs text-amber-700 mb-3">Use the "Add Member" button to create accounts for these team members. They will be able to log in with their credentials.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {defaultTeam.map(m => (
+              <div key={m.email} className="flex items-center gap-2 text-xs">
+                <div className={`w-1.5 h-1.5 rounded-full ${roleColors[m.role]?.split(' ')[0]}`} />
+                <span className="font-medium text-amber-800">{m.name}</span>
+                <span className="text-amber-600 capitalize">({m.role})</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Members table */}
         <div className="bg-white rounded-xl border border-border overflow-hidden">
           <table className="w-full text-sm">
@@ -190,10 +212,8 @@ export default function AdminPage() {
                       disabled={member.id === profile?.id}
                       className="text-xs border border-input rounded-lg px-2 py-1 bg-white outline-none focus:ring-1 focus:ring-primary disabled:opacity-60"
                     >
-                      {ALL_ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {r.replace(/_/g, ' ')}
-                        </option>
+                      {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
+                        <option key={r} value={r}>{r}</option>
                       ))}
                     </select>
                   </td>
@@ -270,10 +290,8 @@ export default function AdminPage() {
                 <label className="block text-xs font-medium text-muted-foreground mb-1">Role *</label>
                 <select value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {ALL_ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {r.replace(/_/g, ' ')}
-                    </option>
+                  {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
+                    <option key={r} value={r}>{r}</option>
                   ))}
                 </select>
               </div>

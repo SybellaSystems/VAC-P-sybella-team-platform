@@ -5,13 +5,15 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/database.types';
 
+type Provider = 'google' | 'github' | 'azure';
+
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signInWithProvider: (provider: 'google' | 'github' | 'azure' | 'linkedin') => Promise<void>;
+  signInWithProvider: (provider: Provider) => Promise<{ error: Error | null }>;
   sendPasswordResetEmail: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -23,7 +25,7 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   loading: true,
   signIn: async () => ({ error: null }),
-  signInWithProvider: async () => {},
+  signInWithProvider: async () => ({ error: null }),
   sendPasswordResetEmail: async () => ({ error: null }),
   signOut: async () => {},
   refreshProfile: async () => {},
@@ -35,72 +37,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
-    const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string) => {
     const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .maybeSingle();
-
-    if (data) {
-      setProfile(data as Profile);
-    } else {
-      setProfile(null);
-    }
+    if (data) setProfile(data as Profile);
   };
 
   const refreshProfile = async () => {
     if (user) await fetchProfile(user.id);
   };
 
-  const handleSession = async (session: Session | null) => {
-    setSession(session);
-    setUser(session?.user ?? null);
-    if (session?.user) {
-      await fetchProfile(session.user.id);
-    } else {
-      setProfile(null);
-    }
-    setLoading(false);
-  };
-
   useEffect(() => {
-    setLoading(true);
     supabase.auth.getSession().then(({ data: { session } }) => {
-      void handleSession(session);
+      setSession(session);
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        fetchProfile(session.user.id).finally(() => setLoading(false));
+      } else {
+        setLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      void handleSession(session);
+      (async () => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        if (session?.user) {
+          await fetchProfile(session.user.id);
+        } else {
+          setProfile(null);
+        }
+        setLoading(false);
+      })();
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    setLoading(true);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (!error) {
-      const {
-        data: { session: newSession },
-      } = await supabase.auth.getSession();
-      if (newSession?.user) {
-        await fetchProfile(newSession.user.id);
-        setUser(newSession.user);
-        setSession(newSession);
-      }
-    }
-    setLoading(false);
     return { error: error as Error | null };
   };
 
-  const signInWithProvider = async (provider: 'google' | 'github' | 'azure' | 'linkedin') => {
-    await supabase.auth.signInWithOAuth({
+  const signInWithProvider = async (provider: Provider) => {
+    const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: {
-        redirectTo: `${window.location.origin}/dashboard`,
-      },
+      options: { redirectTo: `${window.location.origin}/dashboard` },
     });
+    return { error: error as Error | null };
   };
 
   const sendPasswordResetEmail = async (email: string) => {
@@ -116,19 +103,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        session,
-        profile,
-        loading,
-        signIn,
-        signInWithProvider,
-        sendPasswordResetEmail,
-        signOut,
-        refreshProfile,
-      }}
-    >
+    <AuthContext.Provider value={{ user, session, profile, loading, signIn, signInWithProvider, sendPasswordResetEmail, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,104 +1,176 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useAuth } from '@/contexts/AuthContext';
-import { TopBar } from '@/components/layout/TopBar';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-
-type AuditRow = {
-  id: string;
-  event_type: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  action: string | null;
-  details: string | null;
-  actor_role: string | null;
-  created_at: string;
-};
-
-const allowedRoles = new Set(['admin', 'director']);
+import { Badge } from '@/components/ui/badge';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { ScrollText, Search, Filter, User, Activity, Database, Shield, TriangleAlert as AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
+import type { AuditLog, Profile } from '@/lib/database.types';
 
 export default function AuditLogsPage() {
-  useDocumentTitle('Audit logs | VAC-P');
   const { profile } = useAuth();
-  const [rows, setRows] = useState<AuditRow[]>([]);
+
+  const [logs, setLogs] = useState<(AuditLog & { user?: Profile })[]>([]);
   const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [entityFilter, setEntityFilter] = useState('all');
 
   useEffect(() => {
-    if (!profile?.role || !allowedRoles.has(profile.role)) {
-      setLoading(false);
-      return;
-    }
-    let mounted = true;
-    const load = async () => {
-      setLoading(true);
-      const { data } = await supabase!
+    fetchLogs();
+  }, []);
+
+  async function fetchLogs() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
         .from('audit_logs')
-        .select('id, event_type, entity_type, entity_id, action, details, actor_role, created_at')
+        .select('*, user:profiles!audit_logs_user_id_fkey(*)')
         .order('created_at', { ascending: false })
-        .limit(200);
-      if (!mounted) return;
-      setRows((data as AuditRow[]) ?? []);
+        .limit(100);
+
+      if (error) throw error;
+      setLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching audit logs:', error);
+      toast.error('Failed to load audit logs');
+    } finally {
       setLoading(false);
-    };
-    void load();
-    return () => {
-      mounted = false;
-    };
-  }, [profile?.role]);
+    }
+  }
 
-  const filtered = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((r) => {
-      const hay = `${r.event_type} ${r.entity_type ?? ''} ${r.action ?? ''} ${r.details ?? ''}`.toLowerCase();
-      return hay.includes(query);
-    });
-  }, [rows, q]);
+  const filteredLogs = logs.filter(log => {
+    const matchesSearch =
+      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      log.entity_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.user as Profile)?.full_name?.toLowerCase().includes(searchQuery.toLowerCase());
 
-  if (!profile?.role || !allowedRoles.has(profile.role)) {
+    const matchesEntity = entityFilter === 'all' || log.entity_type === entityFilter;
+    return matchesSearch && matchesEntity;
+  });
+
+  const uniqueEntities = Array.from(new Set(logs.map(l => l.entity_type)));
+
+  const getActionColor = (action: string) => {
+    if (action.includes('create') || action.includes('add')) return 'bg-green-100 text-green-800';
+    if (action.includes('update') || action.includes('edit')) return 'bg-blue-100 text-blue-800';
+    if (action.includes('delete') || action.includes('remove')) return 'bg-red-100 text-red-800';
+    if (action.includes('login') || action.includes('auth')) return 'bg-purple-100 text-purple-800';
+    return 'bg-slate-100 text-slate-800';
+  };
+
+  const getEntityIcon = (entity: string) => {
+    if (entity.includes('user') || entity.includes('profile')) return <User className="h-4 w-4" />;
+    if (entity.includes('project') || entity.includes('task')) return <Activity className="h-4 w-4" />;
+    if (entity.includes('finance') || entity.includes('budget')) return <Database className="h-4 w-4" />;
+    if (entity.includes('auth') || entity.includes('credential')) return <Shield className="h-4 w-4" />;
+    return <ScrollText className="h-4 w-4" />;
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-full">
-        <TopBar title="Audit logs" subtitle="Compliance trail" />
-        <div className="p-6 max-w-lg mx-auto text-center text-muted-foreground text-sm">
-          Only administrators and directors can view the audit log.
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full">
-      <TopBar title="Audit logs" subtitle="Immutable record of sensitive actions" />
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by event, entity, or details…" className="max-w-md bg-white" />
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : filtered.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No entries match.</p>
-        ) : (
-          <ul className="space-y-3">
-            {filtered.map((r) => (
-              <li key={r.id} className="bg-white rounded-xl border border-border p-4 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <p className="font-semibold text-sm text-foreground">{r.event_type}</p>
-                  <time className="text-[10px] uppercase tracking-wide text-muted-foreground whitespace-nowrap">
-                    {new Date(r.created_at).toLocaleString()}
-                  </time>
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {[r.entity_type, r.entity_id, r.action].filter(Boolean).join(' · ') || '—'}
-                </p>
-                {r.details ? <p className="text-sm text-foreground/80 mt-2">{r.details}</p> : null}
-                <p className="text-[10px] text-muted-foreground mt-2">Actor role: {r.actor_role ?? '—'}</p>
-              </li>
-            ))}
-          </ul>
-        )}
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Audit Logs</h1>
+        <p className="text-slate-600">System activity and change history</p>
       </div>
+
+      <div className="flex gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search logs..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={entityFilter} onValueChange={setEntityFilter}>
+          <SelectTrigger className="w-48">
+            <Filter className="h-4 w-4 mr-2" />
+            <SelectValue placeholder="Filter by type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            {uniqueEntities.map(entity => (
+              <SelectItem key={entity} value={entity}>{entity}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <ScrollText className="h-5 w-5" />
+            Activity Log
+          </CardTitle>
+          <CardDescription>{filteredLogs.length} entries</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[600px]">
+            {filteredLogs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <ScrollText className="h-12 w-12 text-slate-300 mb-4" />
+                <p className="text-slate-500">No audit logs found</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredLogs.map(log => (
+                  <div
+                    key={log.id}
+                    className="flex items-start gap-4 p-4 rounded-lg border bg-slate-50 hover:bg-slate-100 transition-colors"
+                  >
+                    <div className="p-2 rounded-lg bg-white border">
+                      {getEntityIcon(log.entity_type)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{(log.user as Profile)?.full_name || 'System'}</span>
+                        <Badge className={getActionColor(log.action)}>{log.action}</Badge>
+                        <Badge variant="outline">{log.entity_type}</Badge>
+                      </div>
+                      {log.entity_id && (
+                        <p className="text-sm text-slate-500 mt-1">ID: {log.entity_id}</p>
+                      )}
+                      {Object.keys(log.old_values || {}).length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-slate-400 cursor-pointer">View changes</summary>
+                          <div className="mt-2 p-2 bg-white rounded border text-xs font-mono">
+                            <pre>{JSON.stringify({ old: log.old_values, new: log.new_values }, null, 2)}</pre>
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500 text-right">
+                      <p>{format(new Date(log.created_at), 'MMM d, yyyy')}</p>
+                      <p>{format(new Date(log.created_at), 'HH:mm:ss')}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   );
 }

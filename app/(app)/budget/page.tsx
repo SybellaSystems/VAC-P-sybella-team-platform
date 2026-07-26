@@ -1,387 +1,356 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useAuth } from '@/contexts/AuthContext';
-import { logAudit } from '@/lib/audit';
 import { TopBar } from '@/components/layout/TopBar';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext';
+import type { BudgetProposal, Project } from '@/lib/database.types';
+import { Plus, Wallet, TrendingUp, DollarSign, X, FolderKanban, ExternalLink, Check, Clock, Ban, Eye, ChevronDown, ChevronUp } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
-type BudgetProposal = {
-  id: string;
-  project_id: string | null;
-  auth_user_id?: string | null;
-  title: string;
-  description: string | null;
-  currency: string;
-  amount: number;
-  status: string;
-  submitted_at: string | null;
+const statusConfig: Record<string, { color: string; icon: any }> = {
+  pending: { color: 'bg-amber-100 text-amber-700', icon: Clock },
+  approved: { color: 'bg-emerald-100 text-emerald-700', icon: Check },
+  rejected: { color: 'bg-red-100 text-red-700', icon: Ban },
+  implemented: { color: 'bg-blue-100 text-blue-700', icon: Check },
+  cancelled: { color: 'bg-gray-100 text-gray-600', icon: X },
 };
 
-type ApprovalStep = {
-  id: string;
-  step_name: string;
-  step_order: number;
-  required_role: string | null;
-  status: string;
-  decision_note: string | null;
-  decided_at: string | null;
-};
+const priorityColors: Record<string, string> = { low: 'text-emerald-600', medium: 'text-amber-600', high: 'text-orange-600', critical: 'text-red-600' };
 
-const WORKFLOW_TEMPLATE: { step_order: number; step_name: string; required_role: string | null }[] = [
-  { step_order: 1, step_name: 'Accountant', required_role: 'finance' },
-  { step_order: 2, step_name: 'Finance manager', required_role: 'director' },
-  { step_order: 3, step_name: 'CEO', required_role: 'director' },
-  { step_order: 4, step_name: 'Managing Director', required_role: 'admin' },
-];
+const emptyForm = () => ({
+  title: '', description: '', amount: '', currency: 'USD', category: 'general',
+  project_id: '', priority: 'medium', impact_analysis: '',
+});
 
 export default function BudgetPage() {
-  useDocumentTitle('Budget Proposals | VAC-P');
   const { profile } = useAuth();
-  const [proposals, setProposals] = useState<BudgetProposal[]>([]);
-  const [stepsByProposal, setStepsByProposal] = useState<Record<string, ApprovalStep[]>>({});
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const router = useRouter();
+  const [budgets, setBudgets] = useState<BudgetProposal[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
-  const [draftTitle, setDraftTitle] = useState('');
-  const [draftAmount, setDraftAmount] = useState('');
-  const [draftCurrency, setDraftCurrency] = useState('USD');
-  const [draftDesc, setDraftDesc] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(emptyForm());
+  const [saving, setSaving] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterProject, setFilterProject] = useState('all');
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!supabase) {
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      const { data } = await supabase
-        .from('budget_proposals')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (!cancelled) {
-        setProposals((data ?? []) as BudgetProposal[]);
-        setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const canManage = ['admin', 'director', 'finance', 'manager'].includes(profile?.role || '');
 
+  useEffect(() => { loadAll(); }, []);
 
-  useEffect(() => {
-    if (!selectedId) return;
-    let cancelled = false;
-    (async () => {
-      if (!supabase) return;
-      const { data } = await supabase
-        .from('approval_workflows')
+  const loadAll = async () => {
+    const [{ data: bps }, { data: projs }] = await Promise.all([
+      supabase.from('budget_proposals').select('*').order('created_at', { ascending: false }),
+      supabase.from('projects').select('*').order('name'),
+    ]);
+    setBudgets((bps as BudgetProposal[]) || []);
+    setProjects((projs as Project[]) || []);
+    setLoading(false);
+  };
 
-        .select('*')
-        .eq('budget_proposal_id', selectedId)
-        .order('step_order', { ascending: true });
-      if (!cancelled) {
-        setStepsByProposal((prev) => ({
-          ...prev,
-          [selectedId]: (data ?? []) as ApprovalStep[],
-        }));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedId]);
-
-  const createDraft = async () => {
-    if (!profile || !draftTitle.trim() || !supabase) return;
-    setSubmitting(true);
-    const { data, error } = await supabase
-      .from('budget_proposals')
-      .insert({
-        auth_user_id: profile.id,
-        title: draftTitle.trim(),
-        description: draftDesc.trim() || null,
-        currency: draftCurrency,
-        amount: Number(draftAmount) || 0,
-        status: 'DRAFT',
-      })
-      .select('id')
-      .maybeSingle();
-    if (!error && data?.id) {
-      await logAudit({
-        event_type: 'budget.draft_created',
-        entity_type: 'budget_proposal',
-        entity_id: data.id,
-        action: 'insert',
+  const handleSubmit = async () => {
+    if (!form.title.trim() || !form.amount) return;
+    setSaving(true);
+    const { error } = await supabase.from('budget_proposals').insert({
+      title: form.title, description: form.description, amount: parseFloat(form.amount),
+      currency: form.currency, category: form.category, project_id: form.project_id || null,
+      proposed_by: profile?.id, priority: form.priority, impact_analysis: form.impact_analysis,
+      status: 'pending', current_step: 1, total_steps: 4,
+    });
+    if (error) { toast.error('Failed: ' + error.message); setSaving(false); return; }
+    if (form.project_id) {
+      await supabase.from('project_activity_log').insert({
+        project_id: form.project_id, action: 'budget_proposal_submitted',
+        description: `Budget proposal "${form.title}" (${form.currency} ${form.amount}) submitted by ${profile?.full_name || 'Unknown'}`,
+        actor_id: profile?.id || null,
       });
-      setDraftTitle('');
-      setDraftAmount('');
-      setDraftDesc('');
-      const { data: again } = await supabase
-        .from('budget_proposals')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setProposals((again ?? []) as BudgetProposal[]);
     }
-    setSubmitting(false);
+    await loadAll();
+    setSaving(false); setShowModal(false); setForm(emptyForm());
+    toast.success('Budget proposal submitted');
   };
 
-  const submitForApproval = async (proposalId: string) => {
-    if (!profile || !supabase) return;
-    setSubmitting(true);
-    const now = new Date().toISOString();
-    const { error: uErr } = await supabase
-      .from('budget_proposals')
-      .update({ status: 'SUBMITTED', submitted_at: now })
-      .eq('id', proposalId);
-    if (uErr) {
-      setSubmitting(false);
-      return;
+  const approveBudget = async (id: string, title: string, projectId: string | null) => {
+    const { error } = await supabase.from('budget_proposals').update({
+      status: 'approved', approved_by: profile?.id, approved_at: new Date().toISOString(),
+      current_step: 4,
+    }).eq('id', id);
+    if (error) { toast.error('Failed: ' + error.message); return; }
+    if (projectId) {
+      await supabase.from('project_activity_log').insert({
+        project_id: projectId, action: 'budget_proposal_approved',
+        description: `Budget proposal "${title}" approved by ${profile?.full_name}`,
+        actor_id: profile?.id || null,
+      });
     }
-
-    const rows = WORKFLOW_TEMPLATE.map((s) => ({
-      budget_proposal_id: proposalId,
-      step_name: s.step_name,
-      step_order: s.step_order,
-      required_role: s.required_role,
-      status: 'PENDING',
-    }));
-
-    await supabase.from('approval_workflows').insert(rows);
-
-    await logAudit({
-      event_type: 'budget.submitted',
-      entity_type: 'budget_proposal',
-      entity_id: proposalId,
-      action: 'workflow_started',
-    });
-
-    const { data: proposalsAgain } = await supabase
-      .from('budget_proposals')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(50);
-    setProposals((proposalsAgain ?? []) as BudgetProposal[]);
-
-    const { data: stepsRows } = await supabase
-      .from('approval_workflows')
-      .select('*')
-      .eq('budget_proposal_id', proposalId)
-      .order('step_order', { ascending: true });
-    setStepsByProposal((prev) => ({
-      ...prev,
-      [proposalId]: (stepsRows ?? []) as ApprovalStep[],
-    }));
-
-    setSubmitting(false);
+    toast.success('Budget proposal approved');
+    loadAll();
   };
 
-  const selectedSteps = selectedId ? stepsByProposal[selectedId] ?? [] : [];
-
-  const canActOnStep = (s: ApprovalStep) => {
-    if (!profile) return false;
-    if (s.status !== 'PENDING') return false;
-    if (profile.role === 'admin') return true;
-    if (s.required_role && profile.role === s.required_role) return true;
-    return false;
-  };
-
-  const stepUnlocked = (idx: number) => {
-    if (idx === 0) return true;
-    return selectedSteps.slice(0, idx).every((x) => x.status === 'APPROVED');
-  };
-
-  const decideStep = async (step: ApprovalStep, approved: boolean) => {
-    if (!profile || !selectedId || !supabase) return;
-    setSubmitting(true);
-    await supabase
-      .from('approval_workflows')
-      .update({
-        status: approved ? 'APPROVED' : 'REJECTED',
-        decided_at: new Date().toISOString(),
-        reviewer_auth_user_id: profile.id,
-        decision_note: approved ? 'Approved' : 'Rejected',
-      })
-      .eq('id', step.id);
-    if (!approved) {
-      await supabase.from('budget_proposals').update({ status: 'REJECTED' }).eq('id', selectedId);
+  const rejectBudget = async (id: string, title: string, projectId: string | null) => {
+    const { error } = await supabase.from('budget_proposals').update({
+      status: 'rejected', rejected_by: profile?.id, rejected_at: new Date().toISOString(),
+      rejection_reason: rejectReason,
+    }).eq('id', id);
+    if (error) { toast.error('Failed: ' + error.message); return; }
+    if (projectId) {
+      await supabase.from('project_activity_log').insert({
+        project_id: projectId, action: 'budget_proposal_rejected',
+        description: `Budget proposal "${title}" rejected by ${profile?.full_name}. Reason: ${rejectReason}`,
+        actor_id: profile?.id || null,
+      });
     }
-    await logAudit({
-      event_type: 'budget.workflow_step',
-      entity_type: 'approval_workflow',
-      entity_id: step.id,
-      action: approved ? 'approve' : 'reject',
-    });
-    const { data: stepsRows } = await supabase
-      .from('approval_workflows')
-      .select('*')
-      .eq('budget_proposal_id', selectedId)
-      .order('step_order', { ascending: true });
-    const list = (stepsRows ?? []) as ApprovalStep[];
-    setStepsByProposal((prev) => ({ ...prev, [selectedId]: list }));
-    if (approved && list.length > 0 && list.every((x) => x.status === 'APPROVED')) {
-      await supabase.from('budget_proposals').update({ status: 'APPROVED', decided_at: new Date().toISOString() }).eq('id', selectedId);
-    }
-    const { data: proposalsAgain } = await supabase.from('budget_proposals').select('*').order('created_at', { ascending: false }).limit(50);
-    setProposals((proposalsAgain ?? []) as BudgetProposal[]);
-    setSubmitting(false);
+    setRejectingId(null); setRejectReason('');
+    toast.success('Budget proposal rejected');
+    loadAll();
   };
+
+  const projectMap = new Map(projects.map(p => [p.id, p]));
+  const totalProposed = budgets.reduce((s, b) => s + b.amount, 0);
+  const totalApproved = budgets.filter(b => b.status === 'approved').reduce((s, b) => s + b.amount, 0);
+  const totalPending = budgets.filter(b => b.status === 'pending').reduce((s, b) => s + b.amount, 0);
+
+  const filtered = budgets.filter(b => {
+    const matchStatus = filterStatus === 'all' || b.status === filterStatus;
+    const matchProject = filterProject === 'all' || b.project_id === filterProject;
+    return matchStatus && matchProject;
+  });
 
   return (
-    <div className="min-h-full">
-      <TopBar title="Budgets" subtitle="Proposals and multi-step approvals" />
-      <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
-        {profile && (
-          <div className="bg-white rounded-2xl border border-border p-5 shadow-sm space-y-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">New proposal</p>
-            <div className="grid md:grid-cols-2 gap-3">
-              <input
-                value={draftTitle}
-                onChange={(e) => setDraftTitle(e.target.value)}
-                placeholder="Title"
-                className="rounded-lg border border-input px-3 py-2 text-sm"
-              />
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  value={draftAmount}
-                  onChange={(e) => setDraftAmount(e.target.value)}
-                  placeholder="Amount"
-                  className="flex-1 rounded-lg border border-input px-3 py-2 text-sm"
-                />
-                <select
-                  value={draftCurrency}
-                  onChange={(e) => setDraftCurrency(e.target.value)}
-                  className="w-24 rounded-lg border border-input px-2 py-2 text-sm bg-white"
-                >
-                  <option value="USD">USD</option>
-                  <option value="EUR">EUR</option>
-                  <option value="RWF">RWF</option>
-                </select>
-              </div>
+    <div>
+      <TopBar title="Budget Proposals" subtitle="Propose, approve, and track project-linked budgets" />
+      <div className="p-6 space-y-5">
+        {/* KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Proposed', value: `$${totalProposed.toLocaleString()}`, icon: Wallet, color: 'text-blue-600', bg: 'bg-blue-50' },
+            { label: 'Approved', value: `$${totalApproved.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+            { label: 'Pending', value: `$${totalPending.toLocaleString()}`, icon: DollarSign, color: 'text-amber-600', bg: 'bg-amber-50' },
+            { label: 'Total Proposals', value: budgets.length, icon: Wallet, color: 'text-purple-600', bg: 'bg-purple-50' },
+          ].map(({ label, value, icon: Icon, color, bg }) => (
+            <div key={label} className="bg-white rounded-xl border border-border p-5">
+              <div className={`w-10 h-10 rounded-lg ${bg} flex items-center justify-center mb-3`}><Icon size={20} className={color} /></div>
+              <p className="text-xl font-bold text-foreground">{value}</p>
+              <p className="text-xs text-muted-foreground mt-1">{label}</p>
             </div>
-            <textarea
-              value={draftDesc}
-              onChange={(e) => setDraftDesc(e.target.value)}
-              placeholder="Description (optional)"
-              rows={2}
-              className="w-full rounded-lg border border-input px-3 py-2 text-sm resize-none"
-            />
-            <button
-              type="button"
-              disabled={submitting || !draftTitle.trim()}
-              onClick={() => void createDraft()}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-40"
-            >
-              {submitting ? 'Saving…' : 'Save draft'}
-            </button>
-          </div>
-        )}
+          ))}
+        </div>
 
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : (
-          <div className="grid lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-2xl border border-border p-4 shadow-sm space-y-3">
-              <h3 className="text-sm font-semibold">Proposals</h3>
-              {proposals.length === 0 ? (
-                <p className="text-sm text-muted-foreground">None yet.</p>
-              ) : (
-                proposals.map((p) => (
-                  <div key={p.id} className="space-y-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedId(p.id)}
-                      className={`w-full text-left rounded-xl border p-3 text-sm transition-colors ${
-                        selectedId === p.id ? 'border-primary ring-1 ring-primary/30 bg-primary/5' : 'border-border hover:bg-muted/40'
-                      }`}
-                    >
-                      <p className="font-semibold">{p.title}</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {p.amount} {p.currency}
-                      </p>
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">{p.status}</p>
-                    </button>
-                    {p.status === 'DRAFT' && p.auth_user_id === profile?.id && (
-                      <button
-                        type="button"
-                        disabled={submitting}
-                        onClick={() => void submitForApproval(p.id)}
-                        className="w-full text-xs font-semibold py-2 rounded-lg border border-border hover:bg-muted/50 disabled:opacity-40"
-                      >
-                        Submit for approval
+        {/* Controls */}
+        <div className="flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex gap-3 flex-wrap">
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)}
+              className="px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+              <option value="all">All Status</option>
+              {['pending', 'approved', 'rejected', 'implemented', 'cancelled'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <select value={filterProject} onChange={e => setFilterProject(e.target.value)}
+              className="px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+              <option value="all">All Projects</option>
+              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <button onClick={() => setShowModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90">
+            <Plus size={16} /> New Proposal
+          </button>
+        </div>
+
+        {/* Proposals List */}
+        <div className="space-y-3">
+          {loading && [...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white rounded-xl border border-border p-5 animate-pulse"><div className="h-5 bg-muted rounded w-1/3 mb-2" /><div className="h-4 bg-muted rounded w-1/2" /></div>
+          ))}
+          {!loading && filtered.length === 0 && (
+            <div className="bg-white rounded-xl border border-border p-12 text-center">
+              <Wallet size={40} className="text-muted-foreground mx-auto mb-3 opacity-40" />
+              <p className="text-muted-foreground">No budget proposals found.</p>
+            </div>
+          )}
+          {filtered.map(budget => {
+            const proj = budget.project_id ? projectMap.get(budget.project_id) : null;
+            const statusCfg = statusConfig[budget.status] || statusConfig.pending;
+            const StatusIcon = statusCfg.icon;
+            const isExpanded = expandedId === budget.id;
+            return (
+              <div key={budget.id} className="bg-white rounded-xl border border-border overflow-hidden">
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="font-semibold text-foreground text-sm">{budget.title}</h3>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusCfg.color} flex items-center gap-1`}>
+                          <StatusIcon size={10} /> {budget.status}
+                        </span>
+                        <span className={`text-[10px] font-semibold ${priorityColors[budget.priority]}`}>{budget.priority} priority</span>
+                      </div>
+                      <p className="text-lg font-bold text-foreground mt-1">{budget.currency} {budget.amount.toLocaleString()}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">{budget.category}</span>
+                        {proj && (
+                          <button onClick={() => router.push(`/projects/${proj.id}`)}
+                            className="flex items-center gap-1 text-xs text-primary hover:underline">
+                            <FolderKanban size={11} /> {proj.name} <ExternalLink size={9} />
+                          </button>
+                        )}
+                        <span className="text-xs text-muted-foreground">Step {budget.current_step}/{budget.total_steps}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <button onClick={() => setExpandedId(isExpanded ? null : budget.id)}
+                        className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium border border-input rounded-lg hover:bg-muted">
+                        <Eye size={12} /> Details {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       </button>
+                      {canManage && budget.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <button onClick={() => approveBudget(budget.id, budget.title, budget.project_id)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
+                            <Check size={12} /> Approve
+                          </button>
+                          <button onClick={() => setRejectingId(budget.id)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700">
+                            <Ban size={12} /> Reject
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Expanded Details */}
+                {isExpanded && (
+                  <div className="px-5 pb-5 pt-0 space-y-3 border-t border-border">
+                    {budget.description && (
+                      <div className="pt-3"><p className="text-xs font-semibold text-muted-foreground mb-1">Description</p>
+                        <p className="text-sm text-foreground">{budget.description}</p></div>
+                    )}
+                    {budget.impact_analysis && (
+                      <div><p className="text-xs font-semibold text-muted-foreground mb-1">Impact Analysis</p>
+                        <p className="text-sm text-foreground">{budget.impact_analysis}</p></div>
+                    )}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+                      <div><p className="text-xs text-muted-foreground">Category</p><p className="text-sm font-medium text-foreground">{budget.category}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Priority</p><p className="text-sm font-medium text-foreground capitalize">{budget.priority}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Currency</p><p className="text-sm font-medium text-foreground">{budget.currency}</p></div>
+                      <div><p className="text-xs text-muted-foreground">Approval Step</p><p className="text-sm font-medium text-foreground">{budget.current_step} of {budget.total_steps}</p></div>
+                    </div>
+                    {budget.approved_at && (
+                      <div className="flex items-center gap-2 text-xs text-emerald-600 pt-2"><Check size={12} />
+                        Approved on {new Date(budget.approved_at).toLocaleString()}</div>
+                    )}
+                    {budget.rejected_at && (
+                      <div className="flex items-start gap-2 text-xs text-red-600 pt-2"><Ban size={12} className="mt-0.5" />
+                        <div>Rejected on {new Date(budget.rejected_at).toLocaleString()}
+                          {budget.rejection_reason && <p className="mt-0.5">Reason: {budget.rejection_reason}</p>}
+                        </div>
+                      </div>
                     )}
                   </div>
-                ))
-              )}
-            </div>
+                )}
 
-            <div className="lg:col-span-2 bg-white rounded-2xl border border-border p-5 shadow-sm">
-              <h3 className="text-sm font-semibold mb-1">Approval steps</h3>
-              <p className="text-xs text-muted-foreground mb-4">{selectedId ? 'Review chain for selected proposal' : 'Select a proposal'}</p>
-              {selectedId ? (
-                selectedSteps.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No workflow yet — submit this proposal.</p>
-                ) : (
-                  <ul className="space-y-3">
-                    {selectedSteps.map((s, idx) => {
-                      const unlocked = stepUnlocked(idx);
-                      const can = canActOnStep(s) && unlocked;
-                      return (
-                        <li key={s.id} className="rounded-xl border border-border p-4 bg-slate-50/60">
-                          <div className="flex flex-wrap justify-between gap-2">
-                            <div>
-                              <p className="font-medium">{s.step_name}</p>
-                              {s.required_role ? (
-                                <p className="text-xs text-muted-foreground mt-1">Reviewer role: {s.required_role}</p>
-                              ) : null}
-                              {!unlocked && s.status === 'PENDING' ? (
-                                <p className="text-[10px] text-amber-700 mt-2">Waiting on earlier steps.</p>
-                              ) : null}
-                            </div>
-                            <span className="text-[10px] font-bold uppercase text-muted-foreground">{s.status}</span>
-                          </div>
-                          {s.decided_at ? (
-                            <p className="text-[10px] text-muted-foreground mt-2">{new Date(s.decided_at).toLocaleString()}</p>
-                          ) : null}
-                          {can && (
-                            <div className="flex gap-2 mt-3">
-                              <button
-                                type="button"
-                                disabled={submitting}
-                                onClick={() => void decideStep(s, true)}
-                                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50"
-                              >
-                                Approve
-                              </button>
-                              <button
-                                type="button"
-                                disabled={submitting}
-                                onClick={() => void decideStep(s, false)}
-                                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-border disabled:opacity-50"
-                              >
-                                Reject
-                              </button>
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )
-              ) : (
-                <p className="text-sm text-muted-foreground">Pick a proposal from the list.</p>
-              )}
+                {/* Reject Reason Input */}
+                {rejectingId === budget.id && (
+                  <div className="px-5 pb-5 pt-3 border-t border-border">
+                    <label className="block text-xs font-medium text-muted-foreground mb-1">Rejection Reason</label>
+                    <div className="flex gap-2">
+                      <input value={rejectReason} onChange={e => setRejectReason(e.target.value)}
+                        placeholder="Explain why this proposal is rejected..."
+                        className="flex-1 px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                      <button onClick={() => rejectBudget(budget.id, budget.title, budget.project_id)}
+                        className="px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700">Confirm Reject</button>
+                      <button onClick={() => { setRejectingId(null); setRejectReason(''); }}
+                        className="px-4 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Create Modal */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-base font-bold text-foreground">New Budget Proposal</h2>
+              <button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Title *</label>
+                <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+                  placeholder="e.g. Marketing Campaign Q2"
+                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Link to Project</label>
+                <select value={form.project_id} onChange={e => setForm({ ...form, project_id: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+                  <option value="">No specific project</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Amount *</label>
+                  <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Currency</label>
+                  <select value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+                    {['USD', 'EUR', 'RWF', 'GBP'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Category</label>
+                  <select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+                    {['general', 'marketing', 'development', 'operations', 'hr', 'infrastructure', 'research'].map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label>
+                  <select value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value as any })}
+                    className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
+                    {['low', 'medium', 'high', 'critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
+                <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+                  rows={2} placeholder="Explain the budget request..."
+                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-muted-foreground mb-1">Impact Analysis</label>
+                <textarea value={form.impact_analysis} onChange={e => setForm({ ...form, impact_analysis: e.target.value })}
+                  rows={2} placeholder="What impact will this budget have?"
+                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
+              <button onClick={handleSubmit} disabled={saving || !form.title.trim() || !form.amount}
+                className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                {saving ? 'Submitting...' : 'Submit Proposal'}
+              </button>
             </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

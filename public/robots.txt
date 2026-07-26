@@ -1,3 +1,5 @@
-# Block all crawlers — internal HQ (VAC-P / Sybella Systems)
 User-agent: *
 Disallow: /
+
+# Block all pages from appearing in search engines
+# This is a private platform for Sybella Systems

@@ -1,78 +1,61 @@
 'use client';
 
-import Link from 'next/link';
-import { useDocumentTitle } from '@/hooks/use-document-title';
-import { useAuth } from '@/contexts/AuthContext';
-import { TopBar } from '@/components/layout/TopBar';
-import { Megaphone, Building2, BarChart3, BookOpen } from 'lucide-react';
-
-const marketingRoles = new Set(['marketing_manager', 'admin', 'director', 'sales']);
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Megaphone, TrendingUp, Users, ChartBar as BarChart3 } from 'lucide-react';
 
 export default function MarketingPage() {
-  useDocumentTitle('Marketing | VAC-P');
-  const { profile } = useAuth();
-
-  if (!profile?.role || !marketingRoles.has(profile.role)) {
-    return (
-      <div className="min-h-full">
-        <TopBar title="Marketing" subtitle="Growth & positioning" />
-        <div className="p-6 text-center text-muted-foreground text-sm max-w-md mx-auto">
-          This hub is for marketing, sales, and leadership.
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-full">
-      <TopBar title="Marketing hub" subtitle="Pipeline, narrative, and analytics" />
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Connect campaigns to accounts and evidence in the wiki. Sales sees the same customer spine for a single source of truth.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link
-            href="/sales-pipeline"
-            className="bg-white rounded-xl border border-border p-4 shadow-sm hover:border-primary/40 flex gap-3 items-start"
-          >
-            <Megaphone className="text-fuchsia-600 shrink-0" size={22} />
-            <div>
-              <p className="font-semibold text-sm">Sales pipeline</p>
-              <p className="text-xs text-muted-foreground mt-1">Stage prospects alongside sales</p>
-            </div>
-          </Link>
-          <Link
-            href="/customers"
-            className="bg-white rounded-xl border border-border p-4 shadow-sm hover:border-primary/40 flex gap-3 items-start"
-          >
-            <Building2 className="text-primary shrink-0" size={22} />
-            <div>
-              <p className="font-semibold text-sm">Customers</p>
-              <p className="text-xs text-muted-foreground mt-1">Accounts and contract context</p>
-            </div>
-          </Link>
-          <Link
-            href="/analytics"
-            className="bg-white rounded-xl border border-border p-4 shadow-sm hover:border-primary/40 flex gap-3 items-start"
-          >
-            <BarChart3 className="text-primary shrink-0" size={22} />
-            <div>
-              <p className="font-semibold text-sm">Analytics</p>
-              <p className="text-xs text-muted-foreground mt-1">Performance and adoption</p>
-            </div>
-          </Link>
-          <Link
-            href="/wiki"
-            className="bg-white rounded-xl border border-border p-4 shadow-sm hover:border-primary/40 flex gap-3 items-start"
-          >
-            <BookOpen className="text-primary shrink-0" size={22} />
-            <div>
-              <p className="font-semibold text-sm">Wiki</p>
-              <p className="text-xs text-muted-foreground mt-1">Positioning, FAQs, launch notes</p>
-            </div>
-          </Link>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Marketing</h1>
+        <p className="text-slate-600">Marketing campaigns and metrics</p>
       </div>
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Active Campaigns</CardDescription>
+            <CardTitle className="text-2xl">0</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Megaphone className="h-4 w-4 text-purple-600" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Leads Generated</CardDescription>
+            <CardTitle className="text-2xl">0</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Users className="h-4 w-4 text-blue-600" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Conversion Rate</CardDescription>
+            <CardTitle className="text-2xl">0%</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TrendingUp className="h-4 w-4 text-green-600" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>ROI</CardDescription>
+            <CardTitle className="text-2xl">0%</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart3 className="h-4 w-4 text-amber-600" />
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="flex flex-col items-center justify-center py-12">
+          <Megaphone className="h-12 w-12 text-slate-300 mb-4" />
+          <p className="text-slate-500">Marketing features coming soon</p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

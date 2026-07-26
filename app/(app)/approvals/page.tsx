@@ -1,197 +1,221 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { useDocumentTitle } from '@/hooks/use-document-title';
 import { useAuth } from '@/contexts/AuthContext';
-import { TopBar } from '@/components/layout/TopBar';
-import { canApproveLeave } from '@/lib/rbac';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Wallet, CalendarRange } from 'lucide-react';
-
-type LeaveRow = {
-  id: string;
-  auth_user_id: string | null;
-  leave_type: string;
-  start_date: string;
-  end_date: string;
-  reason: string | null;
-  status: string;
-};
-
-type StepRow = {
-  id: string;
-  budget_proposal_id: string;
-  step_name: string;
-  step_order: number;
-  required_role: string | null;
-  reviewer_auth_user_id: string | null;
-  status: string;
-  budget_proposals?: { title: string; amount: number; currency: string } | null;
-};
-
-const hubRoles = new Set(['admin', 'director', 'hr', 'manager', 'finance']);
-
-function canActOnStep(profileRole: string, profileId: string, row: StepRow): boolean {
-  if (['admin', 'director', 'finance'].includes(profileRole)) return true;
-  if (row.reviewer_auth_user_id && row.reviewer_auth_user_id === profileId) return true;
-  if (row.required_role && row.required_role === profileRole) return true;
-  return false;
-}
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { CircleCheck as CheckCircle, Circle as XCircle, Clock, FileText, DollarSign, Calendar, Key } from 'lucide-react';
+import { toast } from 'sonner';
+import type { ApprovalWorkflow, ApprovalStep, Profile } from '@/lib/database.types';
 
 export default function ApprovalsPage() {
-  useDocumentTitle('Approvals | VAC-P');
   const { profile } = useAuth();
-  const [leaves, setLeaves] = useState<LeaveRow[]>([]);
-  const [steps, setSteps] = useState<StepRow[]>([]);
-  const [names, setNames] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
 
-  const showLeave = profile?.role && canApproveLeave(profile.role);
-  const showBudget = profile?.role && ['admin', 'director', 'manager', 'finance'].includes(profile.role);
+  const [workflows, setWorkflows] = useState<ApprovalWorkflow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('pending');
 
   useEffect(() => {
-    if (!profile?.id || !profile.role || !hubRoles.has(profile.role)) {
-      setLoading(false);
-      return;
+    if (profile) {
+      fetchWorkflows();
     }
-    void (async () => {
-      setLoading(true);
-      let leaveRows: LeaveRow[] = [];
-      let stepRows: StepRow[] = [];
-      if (showLeave) {
-        const { data } = await supabase!
-          .from('leave_requests')
-          .select('*')
-          .eq('status', 'PENDING')
-          .order('requested_at', { ascending: false })
-          .limit(50);
-        leaveRows = (data as LeaveRow[]) ?? [];
-        setLeaves(leaveRows);
-      } else {
-        setLeaves([]);
-      }
-      if (showBudget) {
-        const { data } = await supabase!
-          .from('approval_workflows')
-          .select('*, budget_proposals(title, amount, currency)')
-          .eq('status', 'PENDING')
-          .order('created_at', { ascending: false })
-          .limit(80);
-        stepRows = (data as StepRow[]) ?? [];
-        setSteps(stepRows);
-      } else {
-        setSteps([]);
-      }
+  }, [profile]);
 
-      const { data: profs } = await supabase!.from('profiles').select('id, full_name');
-      const map: Record<string, string> = {};
-      (profs as { id: string; full_name: string }[] | null)?.forEach((p) => {
-        map[p.id] = p.full_name;
-      });
-      setNames(map);
+  async function fetchWorkflows() {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('approval_workflows')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setWorkflows(data || []);
+    } catch (error) {
+      console.error('Error fetching workflows:', error);
+      toast.error('Failed to load approvals');
+    } finally {
       setLoading(false);
-    })();
-  }, [profile?.id, profile?.role, showLeave, showBudget]);
+    }
+  }
 
-  const actionableSteps = useMemo(() => {
-    if (!profile) return [];
-    return steps.filter((s) => canActOnStep(profile.role, profile.id, s));
-  }, [steps, profile]);
+  async function handleApprove(workflowId: string) {
+    if (!profile) return;
 
-  if (!profile?.role || !hubRoles.has(profile.role)) {
+    try {
+      const workflow = workflows.find(w => w.id === workflowId);
+      if (!workflow) return;
+
+      const newStep = workflow.current_step + 1;
+      const isComplete = newStep >= workflow.total_steps;
+
+      const { error } = await supabase
+        .from('approval_workflows')
+        .update({
+          current_step: newStep,
+          status: isComplete ? 'approved' : 'pending',
+        })
+        .eq('id', workflowId);
+
+      if (error) throw error;
+
+      toast.success(isComplete ? 'Approval complete' : 'Step approved');
+      fetchWorkflows();
+    } catch (error) {
+      console.error('Error approving:', error);
+      toast.error('Failed to approve');
+    }
+  }
+
+  async function handleReject(workflowId: string) {
+    try {
+      const { error } = await supabase
+        .from('approval_workflows')
+        .update({ status: 'rejected' })
+        .eq('id', workflowId);
+
+      if (error) throw error;
+
+      toast.success('Rejected');
+      fetchWorkflows();
+    } catch (error) {
+      console.error('Error rejecting:', error);
+      toast.error('Failed to reject');
+    }
+  }
+
+  const pendingWorkflows = workflows.filter(w => w.status === 'pending');
+  const completedWorkflows = workflows.filter(w => w.status !== 'pending');
+
+  const getEntityIcon = (type: string) => {
+    switch (type) {
+      case 'budget': return <DollarSign className="h-5 w-5" />;
+      case 'leave': return <Calendar className="h-5 w-5" />;
+      case 'credential_access': return <Key className="h-5 w-5" />;
+      default: return <FileText className="h-5 w-5" />;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'approved': return 'bg-green-100 text-green-800';
+      case 'rejected': return 'bg-red-100 text-red-800';
+      case 'pending': return 'bg-amber-100 text-amber-800';
+      default: return 'bg-slate-100 text-slate-800';
+    }
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-full">
-        <TopBar title="Approvals" subtitle="Cross-functional queue" />
-        <div className="p-6 text-center text-muted-foreground text-sm max-w-md mx-auto">
-          Your role does not use this approvals hub. Use Leave or Budgets from the sidebar when you need to act.
-        </div>
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-full">
-      <TopBar title="Approvals" subtitle="Leave and budget steps that need attention" />
-      <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-8">
-        {loading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : (
-          <>
-            {showLeave && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <CalendarRange size={18} />
-                  Pending leave
-                  <Link href="/leave" className="ml-auto text-xs font-normal text-primary hover:underline">
-                    Open leave
-                  </Link>
-                </div>
-                {leaves.length === 0 ? (
-                  <p className="text-sm text-muted-foreground bg-white rounded-xl border border-border p-4">No pending leave requests.</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {leaves.map((l) => (
-                      <li key={l.id} className="bg-white rounded-xl border border-border p-4 shadow-sm flex flex-wrap justify-between gap-2">
-                        <div>
-                          <p className="font-medium text-sm">{l.auth_user_id ? names[l.auth_user_id] ?? 'Team member' : 'Unknown'}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {l.leave_type} · {l.start_date} → {l.end_date}
-                          </p>
-                          {l.reason ? <p className="text-sm mt-2">{l.reason}</p> : null}
-                        </div>
-                        <Button asChild size="sm" variant="outline">
-                          <Link href="/leave">Review in Leave</Link>
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            )}
-
-            {showBudget && (
-              <section className="space-y-3">
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Wallet size={18} />
-                  Budget workflow steps
-                  <Link href="/budget" className="ml-auto text-xs font-normal text-primary hover:underline">
-                    Open budgets
-                  </Link>
-                </div>
-                {actionableSteps.length === 0 ? (
-                  <p className="text-sm text-muted-foreground bg-white rounded-xl border border-border p-4">
-                    No pending steps assigned to your role right now.
-                  </p>
-                ) : (
-                  <ul className="space-y-2">
-                    {actionableSteps.map((s) => {
-                      const bp = s.budget_proposals as { title: string; amount: number; currency: string } | null;
-                      return (
-                        <li key={s.id} className="bg-white rounded-xl border border-border p-4 shadow-sm">
-                          <p className="font-medium text-sm">{bp?.title ?? 'Budget proposal'}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Step {s.step_order}: {s.step_name}
-                            {bp ? ` · ${bp.currency} ${Number(bp.amount).toLocaleString()}` : ''}
-                          </p>
-                          <Button asChild size="sm" className="mt-3" variant="outline">
-                            <Link href="/budget">Open in Budgets</Link>
-                          </Button>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </section>
-            )}
-
-            {!showLeave && !showBudget && (
-              <p className="text-sm text-muted-foreground">Nothing to display for your permissions.</p>
-            )}
-          </>
-        )}
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-slate-900">Approvals</h1>
+        <p className="text-slate-600">Review and approve pending requests</p>
       </div>
+
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="pending" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Pending ({pendingWorkflows.length})
+          </TabsTrigger>
+          <TabsTrigger value="completed">
+            <CheckCircle className="h-4 w-4" />
+            Completed
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="pending" className="mt-4">
+          {pendingWorkflows.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <CheckCircle className="h-12 w-12 text-green-300 mb-4" />
+                <p className="text-slate-500">No pending approvals</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {pendingWorkflows.map(workflow => (
+                <Card key={workflow.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-start gap-4">
+                        <div className="p-3 rounded-lg bg-blue-100">
+                          {getEntityIcon(workflow.entity_type)}
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-lg">{workflow.workflow_name}</h3>
+                          <p className="text-slate-600 capitalize">{workflow.entity_type.replace('_', ' ')}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <Badge variant="outline">
+                              Step {workflow.current_step} of {workflow.total_steps}
+                            </Badge>
+                            <Badge className={getStatusColor(workflow.status)}>
+                              {workflow.status}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button variant="outline" size="sm" onClick={() => handleReject(workflow.id)}>
+                          <XCircle className="h-4 w-4 mr-1" />
+                          Reject
+                        </Button>
+                        <Button size="sm" onClick={() => handleApprove(workflow.id)}>
+                          <CheckCircle className="h-4 w-4 mr-1" />
+                          Approve
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="completed" className="mt-4">
+          {completedWorkflows.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FileText className="h-12 w-12 text-slate-300 mb-4" />
+                <p className="text-slate-500">No completed approvals</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-4">
+              {completedWorkflows.map(workflow => (
+                <Card key={workflow.id} className="opacity-75">
+                  <CardContent className="p-6">
+                    <div className="flex items-start gap-4">
+                      <div className="p-3 rounded-lg bg-slate-100">
+                        {getEntityIcon(workflow.entity_type)}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold">{workflow.workflow_name}</h3>
+                        <p className="text-sm text-slate-500 capitalize">{workflow.entity_type.replace('_', ' ')}</p>
+                        <Badge className={getStatusColor(workflow.status)}>
+                          {workflow.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

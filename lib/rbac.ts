@@ -43,7 +43,6 @@ const WORKSPACE: NavSection = {
     { href: '/accountability', label: 'Accountability', icon: 'ClipboardList', roles: ALL_ROLES },
     { href: '/approvals', label: 'Approvals', icon: 'CheckSquare', roles: ['admin', 'director', 'hr', 'manager', 'finance'] },
     { href: '/messages', label: 'Messages', icon: 'MessageSquare', roles: ALL_ROLES },
-    { href: '/notifications', label: 'Notifications', icon: 'Bell', roles: ['admin'] },
   ],
 };
 
@@ -88,7 +87,14 @@ const KNOWLEDGE: NavSection = {
   ],
 };
 
-const NAV_SECTIONS: NavSection[] = [WORKSPACE, OPERATIONS, FINANCE_AND_GOVERNANCE, PEOPLE, KNOWLEDGE];
+const CREDENTIALS: NavSection = {
+  title: 'Security',
+  items: [
+    { href: '/vault', label: 'Credential Vault', icon: 'Shield', roles: ['admin', 'director', 'manager', 'developer', 'finance', 'hr'] },
+  ],
+};
+
+const NAV_SECTIONS: NavSection[] = [WORKSPACE, OPERATIONS, FINANCE_AND_GOVERNANCE, PEOPLE, KNOWLEDGE, CREDENTIALS];
 
 export function navSectionsForRole(role: Role | undefined | null): NavSection[] {
   if (!role) return [];
@@ -116,4 +122,16 @@ export function canEditWiki(role: Role | null | undefined): boolean {
 
 export function canViewAllLeave(role: Role | null | undefined): boolean {
   return !!role && ['admin', 'director', 'hr', 'manager', 'finance'].includes(role);
+}
+
+export function canManageCredentials(role: Role | null | undefined): boolean {
+  return role === 'admin';
+}
+
+export function canApproveCredentialAccess(role: Role | null | undefined): boolean {
+  return !!role && ['admin', 'director'].includes(role);
+}
+
+export function canViewAuditLogs(role: Role | null | undefined): boolean {
+  return !!role && ['admin', 'director'].includes(role);
 }

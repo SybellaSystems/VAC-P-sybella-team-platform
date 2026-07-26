@@ -4,7 +4,6 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { MobileNav } from '@/components/layout/MobileNav';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -20,8 +19,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-muted-foreground">Loading VAC-P...</p>
+          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Loading VAC-P...</p>
         </div>
       </div>
     );
@@ -30,12 +29,11 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   if (!user) return null;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100 text-foreground">
+    <div className="min-h-screen bg-slate-50">
       <Sidebar />
-      <MobileNav />
-      <main role="main" className="flex-1 w-full min-w-0 md:ml-72 overflow-y-auto bg-slate-50 pt-14 md:pt-0 min-h-0">
-        <div className="min-h-full bg-slate-50 px-4 sm:px-6 md:px-8">{children}</div>
-      </main>
+      <div className="md:ml-64">
+        {children}
+      </div>
     </div>
   );
 }

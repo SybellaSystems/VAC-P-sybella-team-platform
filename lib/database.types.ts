@@ -46,6 +46,19 @@ export type Customer = {
   status: 'active' | 'inactive' | 'prospect' | 'churned';
   total_contract_value: number;
   notes: string;
+  industry?: string;
+  city?: string;
+  tin?: string;
+  registration_number?: string;
+  website?: string;
+  postal_address?: string;
+  physical_address?: string;
+  contact_person_name?: string;
+  contact_position?: string;
+  contact_email?: string;
+  contact_phone?: string;
+  billing_contact?: string;
+  finance_contact?: string;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -66,6 +79,36 @@ export type Project = {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Wizard fields
+  project_code?: string;
+  project_type?: string;
+  department?: string;
+  category?: string;
+  objectives?: string[];
+  deliverables?: string[];
+  success_criteria?: string[];
+  tags?: string[];
+  customer_price?: number;
+  discount?: number;
+  taxes?: number;
+  expected_revenue?: number;
+  estimated_costs?: Record<string, number>;
+  warranty_end?: string | null;
+  support_end?: string | null;
+  deployment_date?: string | null;
+  maintenance_end?: string | null;
+  health_score?: number;
+  readiness_score?: number;
+  communication_channels?: string[];
+  meeting_frequency?: string;
+  escalation_contacts?: string[];
+  notification_recipients?: string[];
+  approval_needed?: boolean;
+  approval_person?: string;
+  brand_assets?: Record<string, boolean>;
+  credentials_required?: Record<string, boolean>;
+  git_repo_url?: string;
+  doc_links?: { name: string; url: string }[];
 };
 
 export type Task = {
@@ -130,9 +173,9 @@ export type ProjectIntegration = {
   endpoint: string;
   auth_type: ProjectIntegrationAuthType;
   credentials: ProjectIntegrationCredentials | null;
-  metadata: Record<string, any>;
+  metadata: Record<string, unknown>;
   last_synced_at: string | null;
-  last_pushed_payload?: any;
+  last_pushed_payload?: unknown;
   last_pushed_at?: string | null;
   created_by: string | null;
   created_at: string;
@@ -241,8 +284,8 @@ export type AccountabilityReport = {
   blockers: string;
   notes: string;
   summary: string | null;
-  report_data: Record<string, any> | null;
-  kpi_snapshot: Record<string, number> | null;
+  report_data: Record<string, unknown> | null;
+  kpi_snapshot: Record<string, unknown> | null;
   related_project_ids: string[] | null;
   related_task_ids: string[] | null;
   operational_health: number | null;
@@ -304,6 +347,132 @@ export type WikiPage = {
   };
 };
 
+export type RepoLink = {
+  id: string;
+  title: string;
+  description: string;
+  url: string;
+  link_type: 'document' | 'repo' | 'drive' | 'external' | 'spreadsheet';
+  category: string;
+  access_level: 'public' | 'internal' | 'restricted';
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type LeaveRequest = {
+  id: string;
+  member_id: string;
+  leave_type: 'vacation' | 'sick' | 'personal' | 'other';
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BudgetProposal = {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  currency: string;
+  category: string;
+  project_id: string | null;
+  proposed_by: string | null;
+  current_step: number;
+  total_steps: number;
+  status: 'pending' | 'approved' | 'rejected' | 'implemented' | 'cancelled';
+  priority: 'low' | 'medium' | 'high' | 'critical';
+  approved_by: string | null;
+  approved_at: string | null;
+  rejected_by: string | null;
+  rejected_at: string | null;
+  rejection_reason: string;
+  impact_analysis: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApprovalWorkflow = {
+  id: string;
+  entity_type: 'budget' | 'leave' | 'credential_access' | 'report' | 'other';
+  entity_id: string;
+  current_step: number;
+  total_steps: number;
+  workflow_name: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApprovalStep = {
+  id: string;
+  workflow_id: string;
+  step_order: number;
+  approver_role: string;
+  status: 'pending' | 'approved' | 'rejected';
+  approved_by: string | null;
+  approved_at: string | null;
+  notes: string;
+  created_at: string;
+};
+
+export type AuditLog = {
+  id: string;
+  user_id: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string | null;
+  old_values: Record<string, unknown>;
+  new_values: Record<string, unknown>;
+  notes: string;
+  ip_address: string;
+  created_at: string;
+};
+
+export type CredentialCategory = {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  created_at: string;
+};
+
+export type CredentialVault = {
+  id: string;
+  name: string;
+  category_id: string;
+  description: string;
+  platform_name: string;
+  username: string;
+  password_encrypted: string;
+  access_level: 'public' | 'restricted' | 'admin_only';
+  required_role: string;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  last_accessed_by: string | null;
+  last_accessed_at: string | null;
+};
+
+export type CredentialAccessRequest = {
+  id: string;
+  credential_id: string;
+  user_id: string;
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
+  reason: string;
+  requested_at: string;
+  approved_by: string | null;
+  approved_at: string | null;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type ProjectAssignment = {
   id: string;
   project_id: string;
@@ -325,7 +494,7 @@ export type ProjectCustomField = {
   field_label: string;
   is_visible: boolean;
   sort_order: number;
-  options?: any[];
+  options?: unknown[];
   created_at: string;
   updated_at: string;
 };
@@ -333,7 +502,7 @@ export type ProjectCustomField = {
 export type ProjectRow = {
   id: string;
   project_id: string;
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   created_at: string;
   updated_at: string;
 };
@@ -379,7 +548,7 @@ export type ProjectTemplate = {
   name: string;
   description?: string;
   category?: 'marketing' | 'development' | 'sales' | 'operations' | 'hr' | 'finance' | 'general';
-  structure: Record<string, any>;
+  structure: Record<string, unknown>;
   custom_fields?: ProjectCustomField[];
   is_public: boolean;
   created_by: string;
@@ -390,8 +559,8 @@ export type ProjectTemplate = {
 export type ExtendedProject = Project & {
   import_source?: 'manual' | 'csv' | 'excel' | 'api' | null;
   source_file_name?: string;
-  raw_import_data?: Record<string, any>;
-  column_mapping?: Record<string, any>;
+  raw_import_data?: Record<string, unknown>;
+  column_mapping?: Record<string, unknown>;
   is_template?: boolean;
   template_name?: string;
   category?: 'marketing' | 'development' | 'sales' | 'operations' | 'hr' | 'finance' | 'general';
@@ -408,4 +577,3 @@ export type ExtendedTask = Task & {
 // Supabase Database type - uses any for simplicity with the supabase-js client
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Database = any;
-

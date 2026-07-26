@@ -7,32 +7,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { navSectionsForRole, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
 import { LogOut, ChevronRight } from 'lucide-react';
-import {
-  LayoutDashboard,
-  Briefcase,
-  CheckSquare,
-  FolderKanban,
-  LayoutGrid,
-  Building2,
-  TrendingUp,
-  MessageSquare,
-  ClipboardList,
-  DollarSign,
-  Landmark,
-  ChartBar as BarChart3,
-  Users,
-  HeartPulse,
-  Scale,
-  Megaphone,
-  BookOpen,
-  Link2,
-  CalendarRange,
-  Wallet,
-  PieChart,
-  ScrollText,
-  Shield,
-  Bell,
-} from 'lucide-react';
+import { LayoutDashboard, Briefcase, SquareCheck as CheckSquare, FolderKanban, LayoutGrid, Building2, TrendingUp, MessageSquare, ClipboardList, DollarSign, Landmark, ChartBar as BarChart3, Users, HeartPulse, Scale, Megaphone, BookOpen, Link2, CalendarRange, Wallet, ChartPie as PieChart, ScrollText, Shield, Bell } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard,
@@ -93,22 +68,22 @@ export function Sidebar() {
     : '??';
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-72 flex-col z-30 bg-slate-950 text-white">
-      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <div className="w-10 h-10 rounded-2xl bg-blue-600 flex items-center justify-center flex-shrink-0">
+    <aside className="hidden md:flex fixed left-0 top-0 h-screen w-64 flex-col z-30 bg-[#0f172a] text-white">
+      <div className="flex items-center gap-3 px-5 py-5 border-b border-white/5">
+        <div className="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center flex-shrink-0">
           <span className="text-white font-bold text-sm">SS</span>
         </div>
         <div>
           <p className="text-white font-bold text-sm leading-tight">Sybella Systems</p>
-          <p className="text-blue-300 text-xs font-medium">VAC-P Operations</p>
+          <p className="text-blue-400 text-[10px] font-semibold tracking-wide uppercase">VAC-P Platform</p>
         </div>
       </div>
 
-      <nav aria-label="Primary navigation" className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
+      <nav aria-label="Primary navigation" className="sidebar-scroll flex-1 px-3 py-4 overflow-y-auto space-y-4">
         {sections.map((section: NavSection) => (
-          <div key={section.title} className="space-y-2">
-            <p className="px-3 text-xs uppercase tracking-[0.24em] text-slate-500">{section.title}</p>
-            <div className="space-y-1">
+          <div key={section.title} className="space-y-1">
+            <p className="px-3 text-[10px] uppercase tracking-[0.18em] text-slate-500 font-semibold">{section.title}</p>
+            <div className="space-y-0.5">
               {section.items.map((item) => {
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
@@ -116,15 +91,15 @@ export function Sidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      'group flex items-center gap-3 rounded-2xl px-3 py-2 text-sm font-medium transition-colors',
+                      'group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150',
                       isActive
-                        ? 'bg-slate-800 text-white'
-                        : 'text-slate-300 hover:bg-slate-900 hover:text-white'
+                        ? 'bg-blue-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:bg-white/5 hover:text-white'
                     )}
                   >
                     <NavIcon name={item.icon} />
                     <span>{item.label}</span>
-                    {isActive && <ChevronRight size={14} className="ml-auto text-slate-400" />}
+                    {isActive && <ChevronRight size={14} className="ml-auto text-white/70" />}
                   </Link>
                 );
               })}
@@ -133,25 +108,25 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-4 pb-4 pt-3 border-t border-white/10">
-        <div className="flex items-center gap-3 rounded-2xl bg-white/5 p-3">
-          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-sm font-semibold">{initials}</span>
+      <div className="px-3 pb-4 pt-3 border-t border-white/5">
+        <div className="flex items-center gap-3 rounded-lg bg-white/5 p-2.5">
+          <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-xs font-semibold">{initials}</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold truncate">{profile?.full_name || 'Loading...'}</p>
-            <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
-              <span className={cn('h-2.5 w-2.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-slate-500')} />
+            <p className="text-[13px] font-semibold truncate text-white">{profile?.full_name || 'Loading...'}</p>
+            <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-slate-400">
+              <span className={cn('h-1.5 w-1.5 rounded-full', profile?.role ? roleColors[profile.role as Role] : 'bg-slate-500')} />
               <span className="capitalize">{(profile?.role || '').replace('_', ' ')}</span>
             </div>
           </div>
           <button
             type="button"
             onClick={signOut}
-            className="rounded-lg p-2 text-slate-300 transition hover:bg-white/10 hover:text-white"
+            className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white"
             title="Sign out"
           >
-            <LogOut size={16} />
+            <LogOut size={15} />
           </button>
         </div>
       </div>
