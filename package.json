@@ -1,6 +1,6 @@
 {
-  "name": "VAC-P - Sybella Systems Ltd",
-  "version": "2.1.0",
+  "name": "nextjs",
+  "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",

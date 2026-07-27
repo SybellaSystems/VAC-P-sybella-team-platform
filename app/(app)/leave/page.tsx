@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CalendarRange, Plus, CircleCheck as CheckCircle, Circle as XCircle, Clock, Calendar as CalendarIcon } from 'lucide-react';
+import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -165,15 +166,20 @@ export default function LeavePage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <TopBar title="Leave Management" subtitle="Loading..." />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <TopBar title="Leave Management" subtitle="Request and manage time off" />
+      <div className="p-4 sm:p-6 space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Leave Management</h1>
           <p className="text-slate-600">Request and manage time off</p>
@@ -361,6 +367,7 @@ export default function LeavePage() {
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

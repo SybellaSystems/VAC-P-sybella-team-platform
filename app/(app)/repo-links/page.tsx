@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Link2, Plus, Search, ExternalLink, FileText, Github, FolderOpen } from 'lucide-react';
+import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 
 type RepoLinkRecord = {
@@ -122,15 +123,20 @@ export default function RepoLinksPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <TopBar title="Repository Links" subtitle="Loading..." />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <TopBar title="Repository Links" subtitle="External documents, repositories, and resources" />
+      <div className="p-4 sm:p-6 space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Repository Links</h1>
           <p className="text-slate-600">External documents, repositories, and resources</p>
@@ -184,7 +190,7 @@ export default function RepoLinksPage() {
         </Dialog>
       </div>
 
-      <div className="relative max-w-md">
+      <div className="relative max-w-md w-full">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
         <Input
           placeholder="Search links..."
@@ -225,6 +231,7 @@ export default function RepoLinksPage() {
             </Card>
           ))
         )}
+      </div>
       </div>
     </div>
   );

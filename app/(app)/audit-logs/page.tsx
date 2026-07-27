@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ScrollText, Search, Filter, User, Activity, Database, Shield, TriangleAlert as AlertTriangle } from 'lucide-react';
+import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import type { AuditLog, Profile } from '@/lib/database.types';
@@ -80,20 +81,20 @@ export default function AuditLogsPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <TopBar title="Audit Logs" subtitle="Loading..." />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Audit Logs</h1>
-        <p className="text-slate-600">System activity and change history</p>
-      </div>
-
-      <div className="flex gap-4">
+    <div>
+      <TopBar title="Audit Logs" subtitle="System activity and change history" />
+      <div className="p-4 sm:p-6 space-y-5">
+      <div className="flex flex-wrap gap-3">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <Input
@@ -104,7 +105,7 @@ export default function AuditLogsPage() {
           />
         </div>
         <Select value={entityFilter} onValueChange={setEntityFilter}>
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full sm:w-48">
             <Filter className="h-4 w-4 mr-2" />
             <SelectValue placeholder="Filter by type" />
           </SelectTrigger>
@@ -171,6 +172,7 @@ export default function AuditLogsPage() {
           </ScrollArea>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

@@ -80,12 +80,12 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const typeIcon = (t: string) => t === 'project' ? 'P' : t === 'task' ? 'T' : t === 'customer' ? 'C' : 'U';
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-6 sticky top-0 z-20">
-      <div className="min-w-0">
-        <h1 className="text-lg font-bold text-slate-900 truncate">{title}</h1>
-        {subtitle && <p className="text-xs text-slate-500 truncate">{subtitle}</p>}
+    <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-base sm:text-lg font-bold text-slate-900 truncate">{title}</h1>
+        {subtitle && <p className="text-xs text-slate-500 truncate hidden sm:block">{subtitle}</p>}
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
         {/* Global Search */}
         <div className="relative" ref={searchRef}>
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
@@ -94,8 +94,8 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             value={searchQuery}
             onChange={e => { setSearchQuery(e.target.value); setShowSearch(true); }}
             onFocus={() => setShowSearch(true)}
-            placeholder="Search projects, tasks, people..."
-            className="pl-9 pr-4 py-1.5 text-sm bg-slate-100 rounded-lg border-0 outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white w-64 transition-all"
+            placeholder="Search..."
+            className="pl-9 pr-3 py-1.5 text-sm bg-slate-100 rounded-lg border-0 outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white w-32 sm:w-48 md:w-64 transition-all"
           />
           {showSearch && searchResults.length > 0 && (
             <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 max-h-80 overflow-y-auto z-50">
@@ -121,7 +121,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             {unreadCount > 0 && <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{unreadCount > 9 ? '9+' : unreadCount}</span>}
           </button>
           {showNotif && (
-            <div className="absolute top-full mt-1 right-0 w-80 bg-white rounded-xl shadow-lg border border-slate-200 max-h-96 overflow-y-auto z-50">
+            <div className="absolute top-full mt-1 right-0 w-72 sm:w-80 bg-white rounded-xl shadow-lg border border-slate-200 max-h-96 overflow-y-auto z-50">
               <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
                 <p className="text-sm font-semibold text-slate-700">Notifications</p>
                 {notifications.length > 0 && <button onClick={markAllRead} className="text-xs text-primary hover:underline">Mark all read</button>}
@@ -139,9 +139,9 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             </div>)}
         </div>
 
-        <div className="flex items-center gap-2 pl-3 border-l border-slate-200">
-          <div className="text-right hidden sm:block"><p className="text-xs font-semibold text-slate-700">{greeting()},</p><p className="text-xs text-slate-500">{profile?.full_name?.split(' ')[0]}</p></div>
-          <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center"><span className="text-white text-xs font-bold">{initials}</span></div>
+        <div className="flex items-center gap-2 pl-2 sm:pl-3 sm:border-l border-slate-200">
+          <div className="text-right hidden md:block"><p className="text-xs font-semibold text-slate-700">{greeting()},</p><p className="text-xs text-slate-500">{profile?.full_name?.split(' ')[0]}</p></div>
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0"><span className="text-white text-xs font-bold">{initials}</span></div>
         </div>
       </div>
     </header>

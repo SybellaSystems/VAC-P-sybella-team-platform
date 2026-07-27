@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChartPie as PieChartIcon, Percent, TrendingUp, Users, CreditCard as Edit } from 'lucide-react';
+import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { canManageShares } from '@/lib/rbac';
 import type { Profile } from '@/lib/database.types';
@@ -59,15 +60,20 @@ export default function SharesPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <TopBar title="Company Shares" subtitle="Loading..." />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <TopBar title="Company Shares" subtitle="Equity distribution and ownership" />
+      <div className="p-4 sm:p-6 space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Company Shares</h1>
           <p className="text-slate-600">Equity distribution and ownership</p>
@@ -80,7 +86,7 @@ export default function SharesPage() {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Shares</CardDescription>
@@ -158,6 +164,7 @@ export default function SharesPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

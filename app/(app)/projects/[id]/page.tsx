@@ -6,13 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
 import type { Profile, Project, Customer } from '@/lib/database.types';
-import {
-  ArrowLeft, Briefcase, FileText, Building2, DollarSign, Wallet, Users, Calendar,
-  ListTree, FolderOpen, TriangleAlert, MessageSquare, Activity, ChartBar as BarChart3,
-  Archive, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Plus, Trash2,
-  CreditCard as Edit2, X, GitBranch, GitCommitVertical as GitCommit, ShieldAlert,
-  Network, Download, Check, Loader2, Send,
-} from 'lucide-react';
+import { ArrowLeft, Briefcase, FileText, Building2, DollarSign, Wallet, Users, Calendar, ListTree, FolderOpen, TriangleAlert, MessageSquare, Activity, ChartBar as BarChart3, Archive, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Plus, Trash2, CreditCard as Edit2, X, GitBranch, GitCommitVertical as GitCommit, ShieldAlert, Network, Download, Check, Loader as Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Milestone { id: string; name: string; target_date: string | null; status: string; }
@@ -243,8 +237,14 @@ export default function ProjectDetailPage() {
   return (
     <div>
       <TopBar title={project.name} subtitle={project.project_code || `Project · ${(project.project_type || 'internal').replace('_', ' ')}`} />
-      <div className="flex">
-        <aside className="w-56 bg-white border-r border-border h-[calc(100vh-64px)] overflow-y-auto flex-shrink-0 sticky top-16">
+      <div className="flex flex-col md:flex-row">
+        {/* Mobile section selector */}
+        <div className="md:hidden border-b border-border bg-white p-3">
+          <select value={activeSection} onChange={e => setActiveSection(e.target.value)} className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white">
+            {SECTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </select>
+        </div>
+        <aside className="hidden md:block w-56 bg-white border-r border-border h-[calc(100vh-64px)] overflow-y-auto flex-shrink-0 sticky top-16">
           <div className="p-3">
             <button onClick={() => router.push('/projects')} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors">
               <ArrowLeft size={14} /> All Projects
@@ -265,7 +265,7 @@ export default function ProjectDetailPage() {
           </div>
         </aside>
 
-        <div className="flex-1 p-6 overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
           {isArchived && (
             <div className="mb-4 p-3 bg-slate-100 border border-slate-300 rounded-lg flex items-center gap-2">
               <Archive size={16} className="text-slate-500" />
@@ -305,7 +305,7 @@ export default function ProjectDetailPage() {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                     {[{ label: 'Status', value: project.status?.replace('_', ' '), color: statusColors[project.status] },
                       { label: 'Priority', value: project.priority },
                       { label: 'Progress', value: `${project.progress}%` },
@@ -371,7 +371,7 @@ export default function ProjectDetailPage() {
           {activeSection === 'financial' && (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-slate-900">Financial Performance</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {[{ label: 'Customer Price', value: `$${(project.customer_price || 0).toLocaleString()}`, color: 'text-emerald-600' },
                   { label: 'Budget', value: `$${(project.budget || 0).toLocaleString()}`, color: 'text-blue-600' },
                   { label: 'Spent', value: `$${(project.spent || 0).toLocaleString()}`, color: 'text-red-600' },

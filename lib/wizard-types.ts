@@ -4,11 +4,33 @@ export type ProjectType =
   | 'partnership'
   | 'maintenance'
   | 'research'
-  | 'software_product'
+  | 'software_dev'
+  | 'website_dev'
+  | 'mobile_app'
+  | 'desktop_app'
+  | 'ai_ml'
+  | 'cybersecurity'
   | 'infrastructure'
-  | 'marketing'
-  | 'hr'
-  | 'legal';
+  | 'cloud_migration'
+  | 'marketing_campaign'
+  | 'branding_design'
+  | 'sales_initiative'
+  | 'customer_support_impl'
+  | 'hr_project'
+  | 'recruitment'
+  | 'legal_compliance'
+  | 'finance_accounting'
+  | 'procurement'
+  | 'internal_ops'
+  | 'rd'
+  | 'training_program'
+  | 'business_consulting'
+  | 'event_management'
+  | 'construction'
+  | 'government'
+  | 'community_initiative'
+  | 'product_dev'
+  | 'other';
 
 export type OwnerType = 'existing' | 'new' | 'internal';
 
@@ -343,14 +365,36 @@ export const DEFAULT_WIZARD_DATA: ProjectWizardData = {
 export const PROJECT_TYPE_LABELS: Record<ProjectType, string> = {
   internal: 'Internal Project',
   customer: 'Customer Project',
-  partnership: 'Partnership',
+  partnership: 'Partnership Program',
   maintenance: 'Maintenance Contract',
   research: 'Research',
-  software_product: 'Software Product',
-  infrastructure: 'Infrastructure',
-  marketing: 'Marketing Campaign',
-  hr: 'HR Project',
-  legal: 'Legal Project',
+  software_dev: 'Software Development',
+  website_dev: 'Website Development',
+  mobile_app: 'Mobile Application',
+  desktop_app: 'Desktop Application',
+  ai_ml: 'AI & Machine Learning',
+  cybersecurity: 'Cybersecurity',
+  infrastructure: 'Infrastructure & Networking',
+  cloud_migration: 'Cloud Migration',
+  marketing_campaign: 'Marketing Campaign',
+  branding_design: 'Branding & Design',
+  sales_initiative: 'Sales Initiative',
+  customer_support_impl: 'Customer Support Implementation',
+  hr_project: 'Human Resources',
+  recruitment: 'Recruitment',
+  legal_compliance: 'Legal & Compliance',
+  finance_accounting: 'Finance & Accounting',
+  procurement: 'Procurement',
+  internal_ops: 'Internal Operations',
+  rd: 'Research & Development',
+  training_program: 'Training Program',
+  business_consulting: 'Business Consulting',
+  event_management: 'Event Management',
+  construction: 'Construction',
+  government: 'Government Project',
+  community_initiative: 'Community Initiative',
+  product_dev: 'Product Development',
+  other: 'Other (Custom)',
 };
 
 export const PROJECT_TYPE_ICONS: Record<ProjectType, string> = {
@@ -359,11 +403,33 @@ export const PROJECT_TYPE_ICONS: Record<ProjectType, string> = {
   partnership: 'Handshake',
   maintenance: 'Wrench',
   research: 'FlaskConical',
-  software_product: 'Code2',
+  software_dev: 'Code2',
+  website_dev: 'Globe',
+  mobile_app: 'Smartphone',
+  desktop_app: 'Monitor',
+  ai_ml: 'BrainCircuit',
+  cybersecurity: 'ShieldCheck',
   infrastructure: 'Server',
-  marketing: 'Megaphone',
-  hr: 'Users',
-  legal: 'Scale',
+  cloud_migration: 'Cloud',
+  marketing_campaign: 'Megaphone',
+  branding_design: 'Palette',
+  sales_initiative: 'TrendingUp',
+  customer_support_impl: 'Headphones',
+  hr_project: 'Users',
+  recruitment: 'UserPlus',
+  legal_compliance: 'Scale',
+  finance_accounting: 'Calculator',
+  procurement: 'ShoppingCart',
+  internal_ops: 'Settings',
+  rd: 'FlaskConical',
+  training_program: 'GraduationCap',
+  business_consulting: 'Briefcase',
+  event_management: 'Calendar',
+  construction: 'HardHat',
+  government: 'Landmark',
+  community_initiative: 'Heart',
+  product_dev: 'Package',
+  other: 'Briefcase',
 };
 
 export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
@@ -439,6 +505,12 @@ export const DEFAULT_INFORMATION_CHECKLIST = [
   'Menu',
   'Contacts',
   'Legal Docs',
+  'Brand Guidelines',
+  'Technical Specs',
+  'Contract',
+  'Requirements Doc',
+  'Access Credentials',
+  'API Documentation',
 ];
 
 export const WIZARD_STEPS = [

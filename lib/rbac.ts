@@ -40,6 +40,7 @@ const WORKSPACE: NavSection = {
   title: 'Workspace',
   items: [
     DASHBOARD,
+    { href: '/check-in', label: 'Check-In / Out', icon: 'Clock', roles: ALL_ROLES },
     { href: '/accountability', label: 'Accountability', icon: 'ClipboardList', roles: ALL_ROLES },
     { href: '/approvals', label: 'Approvals', icon: 'CheckSquare', roles: ['admin', 'director', 'hr', 'manager', 'finance'] },
     { href: '/messages', label: 'Messages', icon: 'MessageSquare', roles: ALL_ROLES },
@@ -63,6 +64,7 @@ const FINANCE_AND_GOVERNANCE: NavSection = {
     { href: '/finance', label: 'Finance', icon: 'DollarSign', roles: ['admin', 'director', 'finance', 'manager'] },
     { href: '/finance-console', label: 'Finance console', icon: 'Landmark', roles: ['finance', 'admin', 'director'] },
     { href: '/budget', label: 'Budgets', icon: 'Wallet', roles: ['admin', 'director', 'manager', 'developer', 'designer', 'qa', 'sales', 'hr', 'finance'] },
+    { href: '/risks', label: 'Risk Register', icon: 'TriangleAlert', roles: ['admin', 'director', 'manager', 'developer', 'designer', 'qa'] },
     { href: '/audit-logs', label: 'Audit logs', icon: 'ScrollText', roles: ['admin', 'director'] },
     { href: '/legal', label: 'Legal', icon: 'Scale', roles: ['legal_counsel', 'admin', 'director'] },
     { href: '/analytics', label: 'Analytics', icon: 'BarChart3', roles: ['admin', 'director', 'manager', 'finance', 'marketing_manager'] },
@@ -75,6 +77,10 @@ const PEOPLE: NavSection = {
     { href: '/team', label: 'Team', icon: 'Users', roles: ['admin', 'director', 'manager', 'hr'] },
     { href: '/hr', label: 'HR hub', icon: 'HeartPulse', roles: ['hr', 'admin', 'director'] },
     { href: '/leave', label: 'Leave', icon: 'CalendarRange', roles: ALL_ROLES },
+    { href: '/goals', label: 'Goals & OKRs', icon: 'Target', roles: ['admin', 'director', 'ceo', 'manager', 'hr'] },
+    { href: '/meetings', label: 'Meetings', icon: 'Calendar', roles: ['admin', 'director', 'manager', 'marketing_manager', 'sales', 'hr', 'operations'] },
+    { href: '/skills', label: 'Skills Matrix', icon: 'Award', roles: ['admin', 'director', 'ceo', 'hr'] },
+    { href: '/recognition', label: 'Recognition', icon: 'Trophy', roles: ALL_ROLES },
     { href: '/shares', label: 'Shares', icon: 'PieChart', roles: ['admin', 'director', 'finance', 'manager', 'developer', 'designer', 'qa', 'sales', 'hr', 'legal_counsel', 'marketing_manager'] },
   ],
 };
@@ -94,11 +100,31 @@ const CREDENTIALS: NavSection = {
   ],
 };
 
-const NAV_SECTIONS: NavSection[] = [WORKSPACE, OPERATIONS, FINANCE_AND_GOVERNANCE, PEOPLE, KNOWLEDGE, CREDENTIALS];
+// Primary sections shown by default; secondary sections collapsed under "More"
+const PRIMARY_SECTIONS: NavSection[] = [WORKSPACE, OPERATIONS];
+const SECONDARY_SECTIONS: NavSection[] = [FINANCE_AND_GOVERNANCE, PEOPLE, KNOWLEDGE, CREDENTIALS];
+
+const NAV_SECTIONS: NavSection[] = [...PRIMARY_SECTIONS, ...SECONDARY_SECTIONS];
 
 export function navSectionsForRole(role: Role | undefined | null): NavSection[] {
   if (!role) return [];
   return NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.roles.includes(role)),
+  })).filter((section) => section.items.length > 0);
+}
+
+export function primaryNavSectionsForRole(role: Role | undefined | null): NavSection[] {
+  if (!role) return [];
+  return PRIMARY_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => item.roles.includes(role)),
+  })).filter((section) => section.items.length > 0);
+}
+
+export function secondaryNavSectionsForRole(role: Role | undefined | null): NavSection[] {
+  if (!role) return [];
+  return SECONDARY_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => item.roles.includes(role)),
   })).filter((section) => section.items.length > 0);

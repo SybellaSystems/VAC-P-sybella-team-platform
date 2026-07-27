@@ -19,6 +19,8 @@ export default function MessagesPage() {
   const [msgType, setMsgType] = useState<'text' | 'report' | 'escalation'>('text');
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const [showChannelList, setShowChannelList] = useState(false);
+
   useEffect(() => {
     loadChannels();
     loadMembers();
@@ -123,8 +125,8 @@ export default function MessagesPage() {
     <div className="flex flex-col h-full">
       <TopBar title="Messages" subtitle="Team Communication" />
       <div className="flex flex-1 overflow-hidden" style={{ height: 'calc(100vh - 64px)' }}>
-        {/* Sidebar */}
-        <div className="w-64 bg-white border-r border-border flex flex-col flex-shrink-0">
+        {/* Sidebar - desktop */}
+        <div className="hidden md:flex w-64 bg-white border-r border-border flex-col flex-shrink-0">
           <div className="p-3 border-b border-border">
             <div className="relative">
               <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -155,13 +157,42 @@ export default function MessagesPage() {
           </div>
         </div>
 
+        {/* Mobile channel list overlay */}
+        {showChannelList && (
+          <div className="md:hidden fixed inset-0 z-40 bg-black/50" onClick={() => setShowChannelList(false)}>
+            <div className="absolute left-0 top-0 h-full w-64 bg-white flex flex-col" onClick={e => e.stopPropagation()}>
+              <div className="p-3 border-b border-border flex items-center justify-between">
+                <span className="text-sm font-semibold">Channels</span>
+                <button onClick={() => setShowChannelList(false)} className="p-1"><X size={16} /></button>
+              </div>
+              <div className="p-3 border-b border-border">
+                <div className="relative">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                  <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search channels..." className="w-full pl-8 pr-3 py-1.5 text-xs bg-muted rounded-lg outline-none focus:ring-1 focus:ring-primary" />
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto py-2">
+                {filteredChannels.map(ch => (
+                  <button key={ch.id} onClick={() => { setActiveChannel(ch); setShowChannelList(false); }}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${activeChannel?.id === ch.id ? 'bg-primary/8 text-primary font-semibold' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'}`}>
+                    <Hash size={13} className="flex-shrink-0" /><span className="truncate">{ch.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Main chat */}
         <div className="flex-1 flex flex-col overflow-hidden">
           {activeChannel ? (
             <>
               {/* Channel header */}
-              <div className="px-5 py-3 bg-white border-b border-border flex items-center gap-3">
-                <Hash size={16} className="text-muted-foreground" />
+              <div className="px-4 sm:px-5 py-3 bg-white border-b border-border flex items-center gap-3">
+                <button onClick={() => setShowChannelList(true)} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                  <Hash size={16} />
+                </button>
+                <Hash size={16} className="text-muted-foreground hidden md:block" />
                 <div>
                   <p className="font-semibold text-foreground text-sm">{activeChannel.name}</p>
                   <p className="text-xs text-muted-foreground">{activeChannel.description}</p>
@@ -169,7 +200,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-4">
                 {groupedMessages().map(({ date, messages: dayMsgs }) => (
                   <div key={date}>
                     <div className="flex items-center gap-3 my-3">
@@ -237,7 +268,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Input */}
-              <div className="px-5 py-3 bg-white border-t border-border">
+              <div className="px-4 sm:px-5 py-3 bg-white border-t border-border">
                 {msgType !== 'text' && (
                   <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg mb-2 text-xs font-semibold ${msgType === 'escalation' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
                     <AlertTriangle size={12} />

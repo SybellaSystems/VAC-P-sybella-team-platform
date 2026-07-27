@@ -59,7 +59,7 @@ export default function ProjectsPage() {
   return (
     <div>
       <TopBar title="Projects" subtitle={`${activeProjects.length} active · ${archivedProjects.length} archived`} />
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
         <div className="flex flex-wrap gap-3 items-center justify-between">
           <div className="flex gap-3 flex-wrap">
             <div className="relative">
@@ -92,7 +92,7 @@ export default function ProjectsPage() {
         </div>
 
         {/* Status Summary */}
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
           {['planning','active','on_hold','completed','cancelled'].map(s => {
             const count = projects.filter(p => p.status === s).length;
             return (

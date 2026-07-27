@@ -27,6 +27,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Shield, Key, Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Clock, CircleAlert as AlertCircle, Plus, Search } from 'lucide-react';
+import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import type { CredentialVault, CredentialCategory, CredentialAccessRequest, Profile } from '@/lib/database.types';
 
@@ -238,15 +239,20 @@ export default function VaultPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div>
+        <TopBar title="Credential Vault" subtitle="Loading..." />
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <TopBar title="Credential Vault" subtitle="Secure storage for platform credentials and access management" />
+      <div className="p-4 sm:p-6 space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Credential Vault</h1>
           <p className="text-slate-600">Secure storage for platform credentials and access management</p>
@@ -515,6 +521,7 @@ export default function VaultPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }

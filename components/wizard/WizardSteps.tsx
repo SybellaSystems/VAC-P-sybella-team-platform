@@ -20,19 +20,12 @@ import {
   TagInput,
 } from './WizardFields';
 import type { Profile, Customer, BudgetProposal } from '@/lib/database.types';
-import { Briefcase, Building2, Handshake, Wrench, FlaskConical, Code as Code2, Server, Megaphone, Users, Scale, Search, Plus, Trash2, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Calendar, DollarSign, FolderOpen, ClipboardCheck, MessageSquare, ListTree, TriangleAlert, GitBranch, Link2, Mail, Phone, Globe, User } from 'lucide-react';
+import { Briefcase, Building2, Handshake, Wrench, FlaskConical, Code as Code2, Server, Megaphone, Users, Scale, Search, Plus, Trash2, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Calendar, DollarSign, FolderOpen, ClipboardCheck, MessageSquare, ListTree, TriangleAlert, GitBranch, Link2, Mail, Phone, Globe, User, Smartphone, Monitor, BrainCircuit, ShieldCheck, Cloud, Palette, TrendingUp, Headphones, UserPlus, Calculator, ShoppingCart, Settings, GraduationCap, HardHat, Landmark, Heart, Package } from 'lucide-react';
 
 const PROJECT_TYPE_ICON_MAP: Record<string, React.ElementType> = {
-  Briefcase,
-  Building2,
-  Handshake,
-  Wrench,
-  FlaskConical,
-  Code2,
-  Server,
-  Megaphone,
-  Users,
-  Scale,
+  Briefcase, Building2, Handshake, Wrench, FlaskConical, Code2, Server, Megaphone, Users, Scale,
+  Globe, Smartphone, Monitor, BrainCircuit, ShieldCheck, Cloud, Palette, TrendingUp, Headphones,
+  UserPlus, Calculator, ShoppingCart, Settings, GraduationCap, HardHat, Landmark, Heart, Package,
 };
 
 interface StepProps {

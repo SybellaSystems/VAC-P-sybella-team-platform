@@ -74,9 +74,9 @@ export default function FinanceConsolePage() {
   return (
     <div>
       <TopBar title="Finance Console" subtitle="Financial operations linked to projects" />
-      <div className="p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: 'Total Revenue', value: `$${totalRevenue.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50', trend: '+12%' },
             { label: 'Total Expenses', value: `$${totalExpenses.toLocaleString()}`, icon: DollarSign, color: 'text-red-600', bg: 'bg-red-50', trend: '-3%' },
@@ -95,7 +95,7 @@ export default function FinanceConsolePage() {
         </div>
 
         {/* Budget Proposals Summary */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="bg-white rounded-xl border border-border p-5">
             <div className="flex items-center gap-2 mb-3"><Wallet size={16} className="text-primary" /><h3 className="font-semibold text-foreground text-sm">Budget Proposals</h3></div>
             <div className="space-y-2">

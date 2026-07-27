@@ -124,9 +124,9 @@ export default function BudgetPage() {
   return (
     <div>
       <TopBar title="Budget Proposals" subtitle="Propose, approve, and track project-linked budgets" />
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: 'Total Proposed', value: `$${totalProposed.toLocaleString()}`, icon: Wallet, color: 'text-blue-600', bg: 'bg-blue-50' },
             { label: 'Approved', value: `$${totalApproved.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },

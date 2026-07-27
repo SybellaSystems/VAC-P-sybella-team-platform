@@ -116,9 +116,9 @@ export default function FinancePage() {
   return (
     <div>
       <TopBar title="Finance" subtitle="Financial tracking linked to projects" />
-      <div className="p-6 space-y-5">
+      <div className="p-4 sm:p-6 space-y-5">
         {/* KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           {[
             { label: 'Total Income', value: `$${totalIncome.toLocaleString()}`, icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
             { label: 'Total Expenses', value: `$${totalExpense.toLocaleString()}`, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50' },
@@ -136,7 +136,7 @@ export default function FinancePage() {
         </div>
 
         {/* Charts */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
           <div className="lg:col-span-2 bg-white rounded-xl border border-border p-5">
             <h3 className="font-semibold text-foreground text-sm mb-4">Monthly Income vs Expenses</h3>
             {monthlyData.length === 0 ? (
