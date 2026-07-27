@@ -34,21 +34,19 @@ import {
   PieChart as PieChartIcon,
   TrendingUp,
   Users,
-  Plus,
   Building2,
   Coins,
   ShieldAlert,
-  History,
   UserPlus,
-  Briefcase,
   Layers,
+  History,
 } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { canManageShares } from '@/lib/rbac';
 import type { Profile } from '@/lib/database.types';
 
-// Types matching your exact schema definitions
+// Types matching schema definitions
 type SharePool = {
   id: string;
   company_name: string;
@@ -860,27 +858,23 @@ export default function SharesPage() {
             </div>
           </TabsContent>
 
-          {/* TAB 4: VALUATIONS & PRICING HISTORY */}
+          {/* TAB 4: VALUATION & PRICING HISTORY */}
           <TabsContent value="pricing">
-            <div className="grid gap-6 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <Card>
                 <CardHeader>
                   <CardTitle>Company Valuations</CardTitle>
-                  <CardDescription>Historical valuation entries from `company_valuations`</CardDescription>
+                  <CardDescription>Historical valuation logs from `company_valuations`.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="divide-y divide-slate-100">
-                    {valuations.map((v) => (
-                      <div key={v.id} className="py-3 flex items-center justify-between">
+                    {valuations.map((val) => (
+                      <div key={val.id} className="py-3 flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">{v.company_name}</p>
-                          <p className="text-xs text-slate-500">
-                            Method: {v.valuation_method} • Date: {v.valuation_date}
-                          </p>
+                          <div className="font-semibold text-slate-800">{val.valuation_amount.toLocaleString()} Frw</div>
+                          <div className="text-xs text-slate-500">Method: {val.valuation_method}</div>
                         </div>
-                        <div className="text-right font-bold text-emerald-600">
-                          {Number(v.valuation_amount).toLocaleString()} Frw
-                        </div>
+                        <span className="text-xs text-slate-400">{val.valuation_date}</span>
                       </div>
                     ))}
                   </div>
@@ -890,21 +884,19 @@ export default function SharesPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Share Price History</CardTitle>
-                  <CardDescription>Tracked unit prices over time from `share_price_history`</CardDescription>
+                  <CardDescription>Per-unit price updates over time from `share_price_history`.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="divide-y divide-slate-100">
-                    {priceHistory.map((p) => (
-                      <div key={p.id} className="py-3 flex items-center justify-between">
+                    {priceHistory.map((ph) => (
+                      <div key={ph.id} className="py-3 flex items-center justify-between">
                         <div>
-                          <p className="font-semibold text-slate-900">
-                            {Number(p.price_per_unit).toLocaleString()} Frw / share
-                          </p>
-                          <p className="text-xs text-slate-500">Valuation Date: {p.valuation_date}</p>
+                          <div className="font-semibold text-emerald-600">
+                            {ph.price_per_unit.toLocaleString(undefined, { maximumFractionDigits: 2 })} Frw / unit
+                          </div>
+                          <div className="text-xs text-slate-500">Valuation: {ph.company_value.toLocaleString()} Frw</div>
                         </div>
-                        <div className="text-right text-xs text-slate-500">
-                          Company Value: {Number(p.company_value).toLocaleString()} Frw
-                        </div>
+                        <span className="text-xs text-slate-400">{ph.valuation_date}</span>
                       </div>
                     ))}
                   </div>
@@ -913,31 +905,28 @@ export default function SharesPage() {
             </div>
           </TabsContent>
 
-          {/* TAB 5: AUDIT TRAIL */}
+          {/* TAB 5: AUDIT TRAIL / EVENTS */}
           <TabsContent value="events">
             <Card>
               <CardHeader>
-                <CardTitle>Share Event & Transaction Audit Log</CardTitle>
-                <CardDescription>Historical log of issuances, vestings, and terminations</CardDescription>
+                <CardTitle>Share Events Audit Trail</CardTitle>
+                <CardDescription>System transaction log for share issuances, transfers, and cancellations.</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="divide-y divide-slate-100">
-                  {events.map((evt) => (
-                    <div key={evt.id} className="py-3 flex items-center justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs capitalize">
-                            {evt.event_type}
-                          </Badge>
-                          <span className="text-sm font-medium text-slate-800">{evt.reason}</span>
+                  {events.map((ev) => (
+                    <div key={ev.id} className="py-3 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <History className="h-4 w-4 text-slate-400 shrink-0" />
+                        <div>
+                          <span className="font-medium text-slate-800 capitalize">{ev.event_type}</span>
+                          <span className="text-slate-500 text-sm"> — {ev.quantity.toLocaleString()} units</span>
+                          <p className="text-xs text-slate-400">{ev.reason}</p>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">
-                          Date: {new Date(evt.event_date).toLocaleString()}
-                        </p>
                       </div>
-                      <div className="text-right font-semibold text-slate-900">
-                        {Number(evt.quantity).toLocaleString()} units
-                      </div>
+                      <span className="text-xs text-slate-400">
+                        {new Date(ev.event_date).toLocaleDateString()}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -949,24 +938,26 @@ export default function SharesPage() {
 
       {/* DIALOG 1: CREATE SHARE POOL */}
       <Dialog open={isCreatePoolOpen} onOpenChange={setIsCreatePoolOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Create New Share Instrument Pool</DialogTitle>
-            <DialogDescription>Define a new share class or equity pool for the organization.</DialogDescription>
+            <DialogDescription>Define a new share class and establish unit authorization parameters.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreatePool} className="space-y-4">
+          <form onSubmit={handleCreatePool} className="space-y-4 py-2">
             <div>
-              <Label>Company Name</Label>
+              <Label htmlFor="company_name">Company Name</Label>
               <Input
+                id="company_name"
                 value={poolForm.company_name}
                 onChange={(e) => setPoolForm({ ...poolForm, company_name: e.target.value })}
                 required
               />
             </div>
             <div>
-              <Label>Share Class Title</Label>
+              <Label htmlFor="share_class">Share Class Name</Label>
               <Input
-                placeholder="e.g. Common Class A, Preferred Series Seed"
+                id="share_class"
+                placeholder="e.g., Common Class A, Preferred"
                 value={poolForm.share_class}
                 onChange={(e) => setPoolForm({ ...poolForm, share_class: e.target.value })}
                 required
@@ -974,8 +965,9 @@ export default function SharesPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Authorized Units</Label>
+                <Label htmlFor="authorized_units">Authorized Units</Label>
                 <Input
+                  id="authorized_units"
                   type="number"
                   value={poolForm.authorized_units}
                   onChange={(e) => setPoolForm({ ...poolForm, authorized_units: Number(e.target.value) })}
@@ -983,27 +975,29 @@ export default function SharesPage() {
                 />
               </div>
               <div>
-                <Label>Reserved ESOP Units</Label>
+                <Label htmlFor="reserved_units">Reserved (ESOP)</Label>
                 <Input
+                  id="reserved_units"
                   type="number"
                   value={poolForm.reserved_units}
                   onChange={(e) => setPoolForm({ ...poolForm, reserved_units: Number(e.target.value) })}
-                  required
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Par Value (Frw)</Label>
+                <Label htmlFor="par_value">Par Value (Frw)</Label>
                 <Input
+                  id="par_value"
                   type="number"
                   value={poolForm.par_value}
                   onChange={(e) => setPoolForm({ ...poolForm, par_value: Number(e.target.value) })}
                 />
               </div>
               <div>
-                <Label>Initial Price / Unit (Frw)</Label>
+                <Label htmlFor="current_price">Initial Unit Price (Frw)</Label>
                 <Input
+                  id="current_price"
                   type="number"
                   value={poolForm.current_price_per_unit}
                   onChange={(e) => setPoolForm({ ...poolForm, current_price_per_unit: Number(e.target.value) })}
@@ -1011,10 +1005,10 @@ export default function SharesPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setIsCreatePoolOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsCreatePoolOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Create Pool</Button>
+              <Button type="submit">Create Share Pool</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1022,25 +1016,25 @@ export default function SharesPage() {
 
       {/* DIALOG 2: ALLOCATE SHARES */}
       <Dialog open={isAllocateOpen} onOpenChange={setIsAllocateOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Allocate Shares to Party</DialogTitle>
-            <DialogDescription>Grant units to internal team members or external entities.</DialogDescription>
+            <DialogTitle>Allocate / Grant Shares</DialogTitle>
+            <DialogDescription>Issue share units to internal team members or external parties.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAllocateShares} className="space-y-4">
+          <form onSubmit={handleAllocateShares} className="space-y-4 py-2">
             <div>
-              <Label>Target Share Pool</Label>
+              <Label>Select Share Pool</Label>
               <Select
                 value={allocateForm.share_id}
                 onValueChange={(val) => setAllocateForm({ ...allocateForm, share_id: val })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select share class pool" />
+                  <SelectValue placeholder="Choose a share class pool" />
                 </SelectTrigger>
                 <SelectContent>
                   {pools.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
-                      {p.share_class} ({p.company_name})
+                      {p.company_name} — {p.share_class}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1048,7 +1042,7 @@ export default function SharesPage() {
             </div>
 
             <div>
-              <Label>Allocation Recipient Type</Label>
+              <Label>Allocation Target</Label>
               <Select
                 value={allocateForm.allocation_type}
                 onValueChange={(val: 'internal' | 'external') =>
@@ -1059,26 +1053,26 @@ export default function SharesPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="internal">Internal Profile Member</SelectItem>
-                  <SelectItem value="external">External Investor / Advisor</SelectItem>
+                  <SelectItem value="internal">Internal Team Member (Profile)</SelectItem>
+                  <SelectItem value="external">External Party / Investor / Advisor</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
             {allocateForm.allocation_type === 'internal' ? (
               <div>
-                <Label>Select Member Profile</Label>
+                <Label>Team Member Profile</Label>
                 <Select
                   value={allocateForm.profile_id}
                   onValueChange={(val) => setAllocateForm({ ...allocateForm, profile_id: val })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Choose team member" />
+                    <SelectValue placeholder="Select internal profile" />
                   </SelectTrigger>
                   <SelectContent>
                     {profiles.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.full_name || 'Member'} ({p.role})
+                        {p.full_name} ({p.role})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1089,16 +1083,16 @@ export default function SharesPage() {
                 <div>
                   <Label>External Party Name</Label>
                   <Input
-                    placeholder="e.g. Angel Investor"
+                    placeholder="e.g. Angel Investor LLC"
                     value={allocateForm.external_party_name}
                     onChange={(e) => setAllocateForm({ ...allocateForm, external_party_name: e.target.value })}
                   />
                 </div>
                 <div>
-                  <Label>External Party Email</Label>
+                  <Label>External Email</Label>
                   <Input
                     type="email"
-                    placeholder="investor@example.com"
+                    placeholder="investor@domain.com"
                     value={allocateForm.external_party_email}
                     onChange={(e) => setAllocateForm({ ...allocateForm, external_party_email: e.target.value })}
                   />
@@ -1108,7 +1102,7 @@ export default function SharesPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Number of Units</Label>
+                <Label>Units to Issue</Label>
                 <Input
                   type="number"
                   value={allocateForm.units}
@@ -1127,18 +1121,19 @@ export default function SharesPage() {
             </div>
 
             <div>
-              <Label>Reason / Grant Context</Label>
+              <Label>Grant Reason / Notes</Label>
               <Input
+                placeholder="e.g. Founder Grant, Series A Investment"
                 value={allocateForm.reason}
                 onChange={(e) => setAllocateForm({ ...allocateForm, reason: e.target.value })}
               />
             </div>
 
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setIsAllocateOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsAllocateOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit">Grant Allocation</Button>
+              <Button type="submit">Allocate Units</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -1146,23 +1141,42 @@ export default function SharesPage() {
 
       {/* DIALOG 3: UPDATE VALUATION */}
       <Dialog open={isValuationOpen} onOpenChange={setIsValuationOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Update Company Valuation</DialogTitle>
-            <DialogDescription>
-              Record a new company valuation amount. This updates the calculated unit price.
-            </DialogDescription>
+            <DialogDescription>Record a new valuation milestone to recalculate unit pricing.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleAddValuation} className="space-y-4">
+          <form onSubmit={handleAddValuation} className="space-y-4 py-2">
+            <div>
+              <Label>Apply Price Update To Share Pool</Label>
+              <Select
+                value={valuationForm.share_id}
+                onValueChange={(val) => setValuationForm({ ...valuationForm, share_id: val })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select target share pool" />
+                </SelectTrigger>
+                <SelectContent>
+                  {pools.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.share_class}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <Label>Valuation Amount (Frw)</Label>
               <Input
                 type="number"
+                placeholder="e.g. 500000000"
                 value={valuationForm.valuation_amount}
                 onChange={(e) => setValuationForm({ ...valuationForm, valuation_amount: Number(e.target.value) })}
                 required
               />
             </div>
+
             <div>
               <Label>Valuation Method</Label>
               <Select
@@ -1174,33 +1188,15 @@ export default function SharesPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="Revenue Multiple">Revenue Multiple</SelectItem>
-                  <SelectItem value="Discounted Cash Flow (DCF)">Discounted Cash Flow (DCF)</SelectItem>
-                  <SelectItem value="Comparable Market Value">Comparable Market Value</SelectItem>
-                  <SelectItem value="Book Value">Book Value</SelectItem>
-                  <SelectItem value="Priced Round Valuation">Priced Round Valuation</SelectItem>
+                  <SelectItem value="DCF Analysis">Discounted Cash Flow (DCF)</SelectItem>
+                  <SelectItem value="Priced Round">Priced Investment Round</SelectItem>
+                  <SelectItem value="409A Valuation">Formal 409A / Board Valuation</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div>
-              <Label>Associate with Share Pool</Label>
-              <Select
-                value={valuationForm.share_id}
-                onValueChange={(val) => setValuationForm({ ...valuationForm, share_id: val })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select share pool to sync price" />
-                </SelectTrigger>
-                <SelectContent>
-                  {pools.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.share_class} ({p.company_name})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setIsValuationOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsValuationOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit">Save Valuation</Button>
@@ -1209,30 +1205,36 @@ export default function SharesPage() {
         </DialogContent>
       </Dialog>
 
-      {/* DIALOG 4: TERMINATE / RECLAIM ALLOCATION */}
+      {/* DIALOG 4: RECLAIM / TERMINATE ALLOCATION */}
       <Dialog open={isTerminateOpen} onOpenChange={setIsTerminateOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Reclaim & Terminate Allocation</DialogTitle>
+            <DialogTitle>Reclaim Unvested Share Grant</DialogTitle>
             <DialogDescription>
-              Terminate this share grant and return any unvested shares back to the company pool.
+              Terminate allocation for{' '}
+              <span className="font-semibold text-slate-900">
+                {selectedAllocation?.profile?.full_name || selectedAllocation?.external_party_name}
+              </span>
+              . Unvested shares will be cancelled and returned to the pool.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleTerminateAllocation} className="space-y-4">
+          <form onSubmit={handleTerminateAllocation} className="space-y-4 py-2">
             <div>
-              <Label>Reason for Termination</Label>
+              <Label>Reason for Reclaiming / Termination</Label>
               <Textarea
+                placeholder="Provide departure details or contract breach details..."
                 value={terminateForm.reason}
                 onChange={(e) => setTerminateForm({ ...terminateForm, reason: e.target.value })}
                 required
               />
             </div>
+
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setIsTerminateOpen(false)}>
+              <Button type="button" variant="outline" onClick={() => setIsTerminateOpen(false)}>
                 Cancel
               </Button>
               <Button type="submit" variant="destructive">
-                Confirm Termination
+                Confirm Reclaim
               </Button>
             </DialogFooter>
           </form>
