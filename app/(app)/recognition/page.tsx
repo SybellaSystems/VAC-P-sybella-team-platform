@@ -4,9 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -26,18 +25,39 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Heart, Plus, Award, Star, Trophy, Megaphone, Filter, TrendingUp, CircleAlert as AlertCircle, Sparkles, Medal } from 'lucide-react';
+import {
+  Heart,
+  Plus,
+  Award,
+  Trophy,
+  Megaphone,
+  Filter,
+  CircleAlert as AlertCircle,
+  Sparkles,
+  Medal,
+  Star,
+  Calendar,
+  Clock,
+} from 'lucide-react';
 import { toast } from 'sonner';
-import { format, formatDistanceToNow } from 'date-fns';
+import {
+  format,
+  formatDistanceToNow,
+  startOfWeek,
+  endOfWeek,
+  isWithinInterval,
+  differenceInDays,
+} from 'date-fns';
 
 type RecognitionType = 'kudos' | 'award' | 'milestone' | 'shoutout';
 
 interface EmployeeRecognition {
   id: string;
-  from_user_id: string;
-  to_user_id: string;
-  type: RecognitionType;
-  message: string;
+  given_by: string;
+  recipient_id: string;
+  recognition_type: RecognitionType;
+  title?: string;
+  description: string;
   created_at: string;
   from_profile?: { full_name: string } | null;
   to_profile?: { full_name: string } | null;
@@ -48,7 +68,10 @@ interface Profile {
   full_name: string;
 }
 
-const typeConfig: Record<RecognitionType, { label: string; icon: typeof Heart; color: string; badge: string; bg: string }> = {
+const typeConfig: Record<
+  RecognitionType,
+  { label: string; icon: typeof Heart; color: string; badge: string; bg: string }
+> = {
   kudos: { label: 'Kudos', icon: Heart, color: 'text-pink-600', badge: 'bg-pink-100 text-pink-700', bg: 'bg-pink-50' },
   award: { label: 'Award', icon: Award, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-700', bg: 'bg-amber-50' },
   milestone: { label: 'Milestone', icon: Trophy, color: 'text-purple-600', badge: 'bg-purple-100 text-purple-700', bg: 'bg-purple-50' },
@@ -62,14 +85,21 @@ export default function RecognitionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>('all');
+  const [timeScope, setTimeScope] = useState<'this_week' | 'all'>('this_week');
   const [showDialog, setShowDialog] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [newRecognition, setNewRecognition] = useState({
-    to_user_id: '',
+    recipient_id: '',
     type: 'kudos' as RecognitionType,
-    message: '',
+    description: '',
   });
+
+  // Calculate weekly boundaries
+  const now = new Date();
+  const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday start
+  const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday end
+  const daysRemainingInWeek = differenceInDays(weekEnd, now) + 1;
 
   useEffect(() => {
     if (profile) {
@@ -84,7 +114,11 @@ export default function RecognitionPage() {
     try {
       const { data, error } = await supabase
         .from('employee_recognition')
-        .select('*, from_profile:profiles!employee_recognition_from_user_id_fkey(full_name), to_profile:profiles!employee_recognition_to_user_id_fkey(full_name)')
+        .select(`
+          *,
+          from_profile:profiles!employee_recognition_given_by_fkey(full_name),
+          to_profile:profiles!employee_recognition_recipient_id_fkey(full_name)
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -108,35 +142,41 @@ export default function RecognitionPage() {
   }
 
   async function handleGiveRecognition() {
-    if (!newRecognition.to_user_id) {
+    if (!newRecognition.recipient_id) {
       toast.error('Please select a colleague');
       return;
     }
-    if (!newRecognition.message.trim()) {
+    if (!newRecognition.description.trim()) {
       toast.error('Please add a message');
       return;
     }
-    if (newRecognition.to_user_id === profile?.id) {
+    if (newRecognition.recipient_id === profile?.id) {
       toast.error('You cannot give recognition to yourself');
       return;
     }
     setSubmitting(true);
     try {
       const { error } = await supabase.from('employee_recognition').insert({
-        from_user_id: profile?.id,
-        to_user_id: newRecognition.to_user_id,
-        type: newRecognition.type,
-        message: newRecognition.message.trim(),
+        given_by: profile?.id,
+        recipient_id: newRecognition.recipient_id,
+        recognition_type: newRecognition.type,
+        description: newRecognition.description.trim(),
       });
+
       if (error) throw error;
-      const recipientName = profiles.find(p => p.id === newRecognition.to_user_id)?.full_name || 'Colleague';
+
+      const recipientName = profiles.find((p) => p.id === newRecognition.recipient_id)?.full_name || 'Colleague';
       const typeLabels: Record<string, string> = { kudos: 'Kudos', award: 'Award', milestone: 'Milestone', shoutout: 'Shoutout' };
-      window.dispatchEvent(new CustomEvent('celebration', {
-        detail: { message: `${typeLabels[newRecognition.type]} to ${recipientName}!` }
-      }));
+
+      window.dispatchEvent(
+        new CustomEvent('celebration', {
+          detail: { message: `${typeLabels[newRecognition.type]} to ${recipientName}!` },
+        })
+      );
+
       toast.success('Recognition sent!');
       setShowDialog(false);
-      setNewRecognition({ to_user_id: '', type: 'kudos', message: '' });
+      setNewRecognition({ recipient_id: '', type: 'kudos', description: '' });
       fetchRecognitions();
     } catch (err: any) {
       console.error('Error creating recognition:', err);
@@ -146,44 +186,51 @@ export default function RecognitionPage() {
     }
   }
 
-  const filteredRecognitions = useMemo(() => {
-    if (filterType === 'all') return recognitions;
-    return recognitions.filter((r) => r.type === filterType);
-  }, [recognitions, filterType]);
+  // Filter for recognitions belonging strictly to the current week
+  const thisWeekRecognitions = useMemo(() => {
+    return recognitions.filter((r) =>
+      isWithinInterval(new Date(r.created_at), { start: weekStart, end: weekEnd })
+    );
+  }, [recognitions, weekStart, weekEnd]);
+
+  // Combined filtering based on week scope & category filter
+  const activeRecognitions = useMemo(() => {
+    let list = timeScope === 'this_week' ? thisWeekRecognitions : recognitions;
+    if (filterType !== 'all') {
+      list = list.filter((r) => r.recognition_type === filterType);
+    }
+    return list;
+  }, [timeScope, thisWeekRecognitions, recognitions, filterType]);
 
   const stats = useMemo(() => {
-    const counts: Record<RecognitionType, number> = {
-      kudos: 0,
-      award: 0,
-      milestone: 0,
-      shoutout: 0,
-    };
-    recognitions.forEach((r) => {
-      counts[r.type] = (counts[r.type] || 0) + 1;
+    const counts: Record<RecognitionType, number> = { kudos: 0, award: 0, milestone: 0, shoutout: 0 };
+    activeRecognitions.forEach((r) => {
+      if (counts[r.recognition_type] !== undefined) {
+        counts[r.recognition_type] += 1;
+      }
     });
-    return { total: recognitions.length, ...counts };
-  }, [recognitions]);
+    return { total: activeRecognitions.length, ...counts };
+  }, [activeRecognitions]);
 
-  // Top recognized employees
   const topRecognized = useMemo(() => {
     const countMap: Record<string, { name: string; count: number }> = {};
-    recognitions.forEach((r) => {
+    activeRecognitions.forEach((r) => {
       const name = r.to_profile?.full_name || 'Unknown';
-      if (!countMap[r.to_user_id]) {
-        countMap[r.to_user_id] = { name, count: 0 };
+      if (!countMap[r.recipient_id]) {
+        countMap[r.recipient_id] = { name, count: 0 };
       }
-      countMap[r.to_user_id].count += 1;
+      countMap[r.recipient_id].count += 1;
     });
     return Object.entries(countMap)
       .map(([id, { name, count }]) => ({ id, name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
-  }, [recognitions]);
+  }, [activeRecognitions]);
 
   if (loading) {
     return (
       <div>
-        <TopBar title="Recognition" subtitle="Loading..." />
+        <TopBar title="Weekly Recognition" subtitle="Loading..." />
         <div className="flex items-center justify-center h-64">
           <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
         </div>
@@ -194,95 +241,179 @@ export default function RecognitionPage() {
   return (
     <div>
       <TopBar title="Recognition" subtitle="Celebrate and appreciate your colleagues" />
-      <div className="p-4 sm:p-6 space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Employee Recognition</h1>
-            <p className="text-slate-600">Celebrate and appreciate your colleagues</p>
-          </div>
-          <Dialog open={showDialog} onOpenChange={setShowDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                Give Recognition
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Give Recognition</DialogTitle>
-                <DialogDescription>Show appreciation for a colleague's work</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Colleague</Label>
-                  <Select
-                    value={newRecognition.to_user_id}
-                    onValueChange={(v) => setNewRecognition({ ...newRecognition, to_user_id: v })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select a colleague" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {profiles
-                        .filter((p) => p.id !== profile?.id)
-                        .map((p) => (
-                          <SelectItem key={p.id} value={p.id}>
-                            {p.full_name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div>
-                  <Label>Recognition Type</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                    {(['kudos', 'award', 'milestone', 'shoutout'] as RecognitionType[]).map((type) => {
-                      const cfg = typeConfig[type];
-                      const Icon = cfg.icon;
-                      const isSelected = newRecognition.type === type;
-                      return (
-                        <button
-                          key={type}
-                          onClick={() => setNewRecognition({ ...newRecognition, type })}
-                          className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
-                            isSelected
-                              ? `border-blue-500 ${cfg.bg}`
-                              : 'border-slate-200 hover:border-slate-300 bg-white'
-                          }`}
-                        >
-                          <Icon className={`h-5 w-5 ${isSelected ? cfg.color : 'text-slate-400'}`} />
-                          <span className={`text-xs font-medium ${isSelected ? cfg.color : 'text-slate-500'}`}>
-                            {cfg.label}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div>
-                  <Label>Message</Label>
-                  <Textarea
-                    value={newRecognition.message}
-                    onChange={(e) => setNewRecognition({ ...newRecognition, message: e.target.value })}
-                    placeholder="Write a heartfelt message of appreciation..."
-                    rows={3}
-                  />
-                </div>
+
+      <div className="p-4 sm:p-6 space-y-6">
+        
+        {/* ================= HEADER SPOTLIGHT BANNER (1 WEEK FEATURE) ================= */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-blue-900 via-indigo-800 to-purple-900 text-white p-6 shadow-xl">
+          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 rounded-full bg-white/10 blur-2xl pointer-events-none" />
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div className="space-y-2 max-w-xl">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-amber-400/20 text-amber-300 border-amber-400/30 backdrop-blur-sm px-3 py-1 text-xs font-semibold">
+                  <Sparkles className="w-3.5 h-3.5 mr-1 inline" />
+                  WEEKLY FEATURED HONOREES
+                </Badge>
+                <span className="text-xs text-indigo-200 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5" />
+                  {format(weekStart, 'MMM d')} – {format(weekEnd, 'MMM d, yyyy')}
+                </span>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowDialog(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleGiveRecognition} disabled={submitting}>
-                  {submitting ? 'Sending...' : 'Send Recognition'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+
+              <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
+                This Week's Celebrations 🎉
+              </h1>
+              <p className="text-sm text-indigo-100/90 leading-relaxed">
+                Every week we highlight colleagues who made an impact. Recognitions posted during this week will remain showcased here for 7 days!
+              </p>
+
+              <div className="pt-2 flex items-center gap-4 text-xs text-indigo-200">
+                <span className="flex items-center gap-1.5 font-medium">
+                  <Clock className="w-4 h-4 text-amber-300" />
+                  {daysRemainingInWeek} {daysRemainingInWeek === 1 ? 'day' : 'days'} left in this weekly cycle
+                </span>
+                <span className="opacity-40">•</span>
+                <span>{thisWeekRecognitions.length} recognitions awarded this week</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Dialog open={showDialog} onOpenChange={setShowDialog}>
+                <DialogTrigger asChild>
+                  <Button size="lg" className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20">
+                    <Plus className="mr-2 h-5 w-5" />
+                    Recognize Someone
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Recognize a Colleague</DialogTitle>
+                    <DialogDescription>Your recognition will be showcased in this week's header banner!</DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div>
+                      <Label>Colleague</Label>
+                      <Select
+                        value={newRecognition.recipient_id}
+                        onValueChange={(v) => setNewRecognition({ ...newRecognition, recipient_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a colleague" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {profiles
+                            .filter((p) => p.id !== profile?.id)
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.full_name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label>Recognition Type</Label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                        {(['kudos', 'award', 'milestone', 'shoutout'] as RecognitionType[]).map((type) => {
+                          const cfg = typeConfig[type];
+                          const Icon = cfg.icon;
+                          const isSelected = newRecognition.type === type;
+                          return (
+                            <button
+                              key={type}
+                              type="button"
+                              onClick={() => setNewRecognition({ ...newRecognition, type })}
+                              className={`flex flex-col items-center gap-1.5 p-3 rounded-lg border-2 transition-all ${
+                                isSelected
+                                  ? `border-blue-500 ${cfg.bg}`
+                                  : 'border-slate-200 hover:border-slate-300 bg-white'
+                              }`}
+                            >
+                              <Icon className={`h-5 w-5 ${isSelected ? cfg.color : 'text-slate-400'}`} />
+                              <span className={`text-xs font-medium ${isSelected ? cfg.color : 'text-slate-500'}`}>
+                                {cfg.label}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <Label>Message</Label>
+                      <Textarea
+                        value={newRecognition.description}
+                        onChange={(e) => setNewRecognition({ ...newRecognition, description: e.target.value })}
+                        placeholder="Write a heartfelt message of appreciation..."
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowDialog(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleGiveRecognition} disabled={submitting}>
+                      {submitting ? 'Sending...' : 'Send Recognition'}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
         </div>
 
-        {/* Stats */}
+        {/* ================= CONTROLS & TIME SCOPE TOGGLE ================= */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-4">
+          <div className="flex items-center gap-2">
+            <Button
+              variant={timeScope === 'this_week' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTimeScope('this_week')}
+              className="font-medium"
+            >
+              <Sparkles className="w-4 h-4 mr-1.5 text-amber-500" />
+              This Week ({thisWeekRecognitions.length})
+            </Button>
+            <Button
+              variant={timeScope === 'all' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setTimeScope('all')}
+              className="font-medium"
+            >
+              All-Time History ({recognitions.length})
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Filter className="h-4 w-4 text-slate-400" />
+            <Button
+              variant={filterType === 'all' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setFilterType('all')}
+            >
+              All
+            </Button>
+            {(['kudos', 'award', 'milestone', 'shoutout'] as RecognitionType[]).map((type) => {
+              const cfg = typeConfig[type];
+              const Icon = cfg.icon;
+              return (
+                <Button
+                  key={type}
+                  variant={filterType === type ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setFilterType(type)}
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  <Icon className={`h-3.5 w-3.5 ${cfg.color}`} />
+                  {cfg.label}
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* ================= STATS FOR ACTIVE SCOPE ================= */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <Card>
             <CardContent className="p-4">
@@ -322,22 +453,30 @@ export default function RecognitionPage() {
           </Card>
         </div>
 
-        {/* Top Recognized */}
+        {/* ================= TOP RECOGNIZED ================= */}
         {topRecognized.length > 0 && (
           <Card>
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-2">
-                <Medal className="h-4 w-4 text-amber-500" />
-                Most Recognized Employees
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Medal className="h-4 w-4 text-amber-500" />
+                  {timeScope === 'this_week' ? "This Week's Top Honorees" : 'All-Time Top Recognized'}
+                </span>
+                <span className="text-xs font-normal text-slate-400">
+                  {timeScope === 'this_week' ? 'Weekly Leaderboard' : 'Overall Leaderboard'}
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                 {topRecognized.map((person, i) => {
-                  const medals = ['text-amber-500', 'text-slate-400', 'text-orange-600', 'text-slate-400', 'text-slate-400'];
+                  const medals = ['text-amber-500', 'text-slate-400', 'text-amber-700'];
                   return (
-                    <div key={person.id} className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-7">
+                    <div
+                      key={person.id}
+                      className="flex items-center gap-3 p-3 rounded-lg border bg-slate-50/50"
+                    >
+                      <div className="flex items-center justify-center w-6">
                         {i < 3 ? (
                           <Medal className={`h-5 w-5 ${medals[i]}`} />
                         ) : (
@@ -349,10 +488,12 @@ export default function RecognitionPage() {
                           {person.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
                         </span>
                       </div>
-                      <span className="text-sm font-medium text-slate-700 flex-1">{person.name}</span>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-                        <span className="text-sm font-semibold text-slate-600">{person.count}</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-slate-800 truncate">{person.name}</p>
+                        <p className="text-xs text-slate-500 flex items-center gap-1">
+                          <Star className="h-3 w-3 text-amber-400 fill-amber-400" />
+                          {person.count} {person.count === 1 ? 'award' : 'awards'}
+                        </p>
                       </div>
                     </div>
                   );
@@ -361,35 +502,6 @@ export default function RecognitionPage() {
             </CardContent>
           </Card>
         )}
-
-        {/* Filter */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <Filter className="h-4 w-4 text-slate-400" />
-          <Button
-            variant={filterType === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilterType('all')}
-          >
-            All ({recognitions.length})
-          </Button>
-          {(['kudos', 'award', 'milestone', 'shoutout'] as RecognitionType[]).map((type) => {
-            const cfg = typeConfig[type];
-            const Icon = cfg.icon;
-            const count = recognitions.filter((r) => r.type === type).length;
-            return (
-              <Button
-                key={type}
-                variant={filterType === type ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterType(type)}
-                className="flex items-center gap-1.5"
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {cfg.label} ({count})
-              </Button>
-            );
-          })}
-        </div>
 
         {/* Error State */}
         {error && (
@@ -404,31 +516,36 @@ export default function RecognitionPage() {
           </Card>
         )}
 
-        {/* Recognition Feed */}
-        {!error && filteredRecognitions.length === 0 ? (
+        {/* ================= RECOGNITION FEED ================= */}
+        {!error && activeRecognitions.length === 0 ? (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-12">
               <Sparkles className="h-12 w-12 text-slate-300 mb-4" />
-              <p className="text-slate-500 mb-2">No recognition yet</p>
-              <p className="text-sm text-slate-400 mb-4">
-                {filterType === 'all'
-                  ? 'Be the first to recognize a colleague'
-                  : `No ${typeConfig[filterType as RecognitionType].label.toLowerCase()} recognitions yet`}
+              <p className="text-slate-600 font-medium mb-1">
+                {timeScope === 'this_week' ? 'No recognitions given yet this week' : 'No recognition entries found'}
+              </p>
+              <p className="text-sm text-slate-400 mb-4 text-center max-w-sm">
+                {timeScope === 'this_week'
+                  ? 'Be the first to give a shoutout to a teammate for this week!'
+                  : 'Start recognizing colleagues to see them listed here.'}
               </p>
               <Button onClick={() => setShowDialog(true)}>
                 <Plus className="mr-2 h-4 w-4" />
-                Give Recognition
+                Recognize a Teammate
               </Button>
             </CardContent>
           </Card>
         ) : (
           !error && (
             <div className="space-y-3">
-              {filteredRecognitions.map((rec) => {
-                const cfg = typeConfig[rec.type];
+              <h2 className="text-lg font-bold text-slate-800">
+                {timeScope === 'this_week' ? "This Week's Feed" : 'All Recognitions Feed'}
+              </h2>
+              {activeRecognitions.map((rec) => {
+                const cfg = typeConfig[rec.recognition_type] || typeConfig.kudos;
                 const Icon = cfg.icon;
                 return (
-                  <Card key={rec.id} className="overflow-hidden">
+                  <Card key={rec.id} className="overflow-hidden hover:shadow-md transition-shadow">
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex items-start gap-3">
                         <div className={`p-2.5 rounded-lg ${cfg.bg} flex-shrink-0`}>
@@ -452,7 +569,7 @@ export default function RecognitionPage() {
                               {formatDistanceToNow(new Date(rec.created_at), { addSuffix: true })}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-700 mt-2">{rec.message}</p>
+                          <p className="text-sm text-slate-700 mt-2 leading-relaxed">{rec.description}</p>
                         </div>
                       </div>
                     </CardContent>
