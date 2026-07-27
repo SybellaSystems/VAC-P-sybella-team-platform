@@ -136,9 +136,9 @@ export default function MyWorkPage() {
           .eq('assigned_to', profile.id)
           .order('next_due_date', { ascending: true, nullsFirst: false }),
         supabase
-          .from('project_assignments')
-          .select('project:projects!project_assignments_project_id_fkey(id, name)')
-          .eq('member_id', profile.id),
+          .from('projects')
+          .select('id, name')
+          .order('name', { ascending: true }),
       ]);
 
       if (taskRes.error) throw taskRes.error;
@@ -147,10 +147,7 @@ export default function MyWorkPage() {
 
       setTasks((taskRes.data as Task[]) || []);
       setRecurringTasks((recurRes.data as RecurringTask[]) || []);
-      const projList = (projRes.data || [])
-        .map((p: any) => p.project)
-        .filter(Boolean) as { id: string; name: string }[];
-      setProjects(projList);
+      setProjects((projRes.data as { id: string; name: string }[]) || []);
     } catch (err: any) {
       console.error('Error fetching my work:', err);
       setError(err?.message || 'Failed to load your work');
