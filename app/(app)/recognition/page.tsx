@@ -38,6 +38,7 @@ import {
   Star,
   Calendar,
   Clock,
+  PartyPopper,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -70,12 +71,12 @@ interface Profile {
 
 const typeConfig: Record<
   RecognitionType,
-  { label: string; icon: typeof Heart; color: string; badge: string; bg: string }
+  { label: string; icon: typeof Heart; color: string; badge: string; bg: string; border: string }
 > = {
-  kudos: { label: 'Kudos', icon: Heart, color: 'text-pink-600', badge: 'bg-pink-100 text-pink-700', bg: 'bg-pink-50' },
-  award: { label: 'Award', icon: Award, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-700', bg: 'bg-amber-50' },
-  milestone: { label: 'Milestone', icon: Trophy, color: 'text-purple-600', badge: 'bg-purple-100 text-purple-700', bg: 'bg-purple-50' },
-  shoutout: { label: 'Shoutout', icon: Megaphone, color: 'text-blue-600', badge: 'bg-blue-100 text-blue-700', bg: 'bg-blue-50' },
+  kudos: { label: 'Kudos', icon: Heart, color: 'text-pink-600', badge: 'bg-pink-100 text-pink-700 border-pink-200', bg: 'bg-pink-50', border: 'border-pink-200' },
+  award: { label: 'Award', icon: Award, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-700 border-amber-200', bg: 'bg-amber-50', border: 'border-amber-200' },
+  milestone: { label: 'Milestone', icon: Trophy, color: 'text-purple-600', badge: 'bg-purple-100 text-purple-700 border-purple-200', bg: 'bg-purple-50', border: 'border-purple-200' },
+  shoutout: { label: 'Shoutout', icon: Megaphone, color: 'text-blue-600', badge: 'bg-blue-100 text-blue-700 border-blue-200', bg: 'bg-blue-50', border: 'border-blue-200' },
 };
 
 export default function RecognitionPage() {
@@ -87,6 +88,7 @@ export default function RecognitionPage() {
   const [filterType, setFilterType] = useState<string>('all');
   const [timeScope, setTimeScope] = useState<'this_week' | 'all'>('this_week');
   const [showDialog, setShowDialog] = useState(false);
+  const [showCelebrationModal, setShowCelebrationModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [newRecognition, setNewRecognition] = useState({
@@ -122,13 +124,35 @@ export default function RecognitionPage() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setRecognitions((data as EmployeeRecognition[]) || []);
+      const recs = (data as EmployeeRecognition[]) || [];
+      setRecognitions(recs);
+
+      // Check twice-a-week celebration display condition for logging in user
+      checkTwiceWeeklyCelebration(recs);
     } catch (err: any) {
       console.error('Error fetching recognitions:', err);
       setError(err?.message || 'Failed to load recognition feed');
       toast.error('Failed to load recognition feed');
     } finally {
       setLoading(false);
+    }
+  }
+
+  // Handles showing team celebrations popup twice per week per user
+  function checkTwiceWeeklyCelebration(recs: EmployeeRecognition[]) {
+    if (!profile?.id) return;
+
+    const currentWeekKey = `celebration_week_${format(weekStart, 'yyyy-MM-dd')}_${profile.id}`;
+    const storedCount = parseInt(localStorage.getItem(currentWeekKey) || '0', 10);
+
+    const thisWeekRecs = recs.filter((r) =>
+      isWithinInterval(new Date(r.created_at), { start: weekStart, end: weekEnd })
+    );
+
+    // If less than 2 views logged for this user this week & there are celebrations to show
+    if (storedCount < 2 && thisWeekRecs.length > 0) {
+      setShowCelebrationModal(true);
+      localStorage.setItem(currentWeekKey, (storedCount + 1).toString());
     }
   }
 
@@ -242,6 +266,70 @@ export default function RecognitionPage() {
     <div>
       <TopBar title="Recognition" subtitle="Celebrate and appreciate your colleagues" />
 
+      {/* ================= TWICE A WEEK CELEBRATIONS POPUP DIALOG ================= */}
+      <Dialog open={showCelebrationModal} onOpenChange={setShowCelebrationModal}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader className="text-center pb-2 border-b">
+            <div className="mx-auto w-12 h-12 rounded-full bg-gradient-to-tr from-amber-400 to-pink-500 flex items-center justify-center text-white mb-2 shadow-lg">
+              <PartyPopper className="h-6 w-6 animate-bounce" />
+            </div>
+            <DialogTitle className="text-xl font-extrabold text-slate-900">
+              🎉 This Week's Team Celebrations!
+            </DialogTitle>
+            <DialogDescription className="text-xs text-slate-500">
+              Here are the honors and recognitions awarded across the team this week ({format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d')})
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-3">
+            {thisWeekRecognitions.length === 0 ? (
+              <p className="text-center text-sm text-slate-500 py-6">No recognitions logged yet for this week.</p>
+            ) : (
+              thisWeekRecognitions.map((rec) => {
+                const cfg = typeConfig[rec.recognition_type] || typeConfig.kudos;
+                const Icon = cfg.icon;
+                return (
+                  <div
+                    key={rec.id}
+                    className={`p-4 rounded-xl border ${cfg.border} ${cfg.bg} shadow-sm transition-all hover:scale-[1.01]`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2 rounded-lg bg-white/80 shadow-xs flex-shrink-0`}>
+                        <Icon className={`h-5 w-5 ${cfg.color}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                          <div className="flex items-center gap-2">
+                            <Badge className={`${cfg.badge} border font-semibold`}>{cfg.label}</Badge>
+                            <span className="text-xs text-slate-700">
+                              <strong className="text-slate-900">{rec.from_profile?.full_name || 'Someone'}</strong>
+                              {' → '}
+                              <strong className="text-slate-900">{rec.to_profile?.full_name || 'Someone'}</strong>
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-400">
+                            {formatDistanceToNow(new Date(rec.created_at), { addSuffix: true })}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-800 font-medium leading-relaxed bg-white/60 p-2.5 rounded-lg border border-slate-100">
+                          "{rec.description}"
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          <DialogFooter className="sm:justify-center border-t pt-3">
+            <Button className="bg-slate-900 text-white hover:bg-slate-800 px-6 font-bold" onClick={() => setShowCelebrationModal(false)}>
+              Keep Celebrating ✨
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <div className="p-4 sm:p-6 space-y-6">
         
         {/* ================= HEADER SPOTLIGHT BANNER (1 WEEK FEATURE) ================= */}
@@ -265,7 +353,7 @@ export default function RecognitionPage() {
                 This Week's Celebrations 🎉
               </h1>
               <p className="text-sm text-indigo-100/90 leading-relaxed">
-                Every week we highlight colleagues who made an impact. Recognitions posted during this week will remain showcased here for 7 days!
+                Every week we highlight colleagues who made an impact. All recognitions and colors set by the recognizer are highlighted across team dashboards!
               </p>
 
               <div className="pt-2 flex items-center gap-4 text-xs text-indigo-200">
@@ -279,6 +367,17 @@ export default function RecognitionPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
+              {thisWeekRecognitions.length > 0 && (
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowCelebrationModal(true)} 
+                  className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-semibold"
+                >
+                  <PartyPopper className="mr-2 h-4 w-4 text-amber-300" />
+                  View Celebrations
+                </Button>
+              )}
+
               <Dialog open={showDialog} onOpenChange={setShowDialog}>
                 <DialogTrigger asChild>
                   <Button size="lg" className="bg-amber-400 hover:bg-amber-300 text-slate-950 font-bold shadow-lg shadow-amber-500/20">
@@ -289,7 +388,7 @@ export default function RecognitionPage() {
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Recognize a Colleague</DialogTitle>
-                    <DialogDescription>Your recognition will be showcased in this week's header banner!</DialogDescription>
+                    <DialogDescription>Your recognition and styled category theme will be showcased across team login celebrations!</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div>
@@ -545,22 +644,22 @@ export default function RecognitionPage() {
                 const cfg = typeConfig[rec.recognition_type] || typeConfig.kudos;
                 const Icon = cfg.icon;
                 return (
-                  <Card key={rec.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                  <Card key={rec.id} className={`overflow-hidden hover:shadow-md transition-shadow border ${cfg.border} ${cfg.bg}`}>
                     <CardContent className="p-4 sm:p-5">
                       <div className="flex items-start gap-3">
-                        <div className={`p-2.5 rounded-lg ${cfg.bg} flex-shrink-0`}>
+                        <div className={`p-2.5 rounded-lg bg-white/80 shadow-xs flex-shrink-0`}>
                           <Icon className={`h-5 w-5 ${cfg.color}`} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-2 flex-wrap">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge className={cfg.badge}>{cfg.label}</Badge>
+                              <Badge className={`${cfg.badge} border font-semibold`}>{cfg.label}</Badge>
                               <span className="text-sm text-slate-600">
-                                <span className="font-semibold text-slate-800">
+                                <span className="font-semibold text-slate-900">
                                   {rec.from_profile?.full_name || 'Someone'}
                                 </span>
                                 {' → '}
-                                <span className="font-semibold text-slate-800">
+                                <span className="font-semibold text-slate-900">
                                   {rec.to_profile?.full_name || 'Someone'}
                                 </span>
                               </span>
@@ -569,7 +668,9 @@ export default function RecognitionPage() {
                               {formatDistanceToNow(new Date(rec.created_at), { addSuffix: true })}
                             </span>
                           </div>
-                          <p className="text-sm text-slate-700 mt-2 leading-relaxed">{rec.description}</p>
+                          <p className="text-sm text-slate-800 mt-2 leading-relaxed bg-white/60 p-3 rounded-lg border border-slate-100">
+                            {rec.description}
+                          </p>
                         </div>
                       </div>
                     </CardContent>
