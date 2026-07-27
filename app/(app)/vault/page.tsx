@@ -42,7 +42,6 @@ type TeamOption = {
   name: string;
 };
 
-// Supported Default Categories
 const DEFAULT_CATEGORIES: CategoryOption[] = [
   { id: 'hosting', name: 'Hosting' },
   { id: 'code', name: 'Code' },
@@ -56,6 +55,18 @@ const DEFAULT_CATEGORIES: CategoryOption[] = [
 function isUUID(str: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(str);
+}
+
+// Normalize roles (handles both 'developer' and 'developers', 'hrs', 'saless', etc.)
+function normalizeRole(role: string = ''): string {
+  const r = role.toLowerCase().trim();
+  if (r === 'developers') return 'developer';
+  if (r === 'managers') return 'manager';
+  if (r === 'designers') return 'designer';
+  if (r === 'qas') return 'qa';
+  if (r === 'saless') return 'sales';
+  if (r === 'hrs') return 'hr';
+  return r;
 }
 
 // Web Crypto Helper
@@ -80,28 +91,6 @@ async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
     false,
     ['encrypt', 'decrypt']
   );
-}
-
-async function encryptSecret(plainText: string): Promise<string> {
-  const masterKey = process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
-  const key = await getCryptoKey(masterKey);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const enc = new TextEncoder();
-  const encrypted = await window.crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    enc.encode(plainText)
-  );
-  
-  const combined = new Uint8Array(iv.length + encrypted.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(encrypted), iv.length);
-
-  const binaryString = Array.from(combined)
-    .map((byte) => String.fromCharCode(byte))
-    .join('');
-
-  return btoa(binaryString);
 }
 
 async function decryptSecret(cipherText: string): Promise<string> {
@@ -196,7 +185,7 @@ export default function VaultPage() {
     if (found) return found.name;
     const defaultFound = DEFAULT_CATEGORIES.find((c) => c.id === categoryId);
     if (defaultFound) return defaultFound.name;
-    return isUUID(categoryId) ? 'General' : categoryId.toUpperCase();
+    return isUUID(categoryId) ? 'General' : categoryId;
   }
 
   async function togglePasswordVisibility(credId: string, encryptedValue: string) {
@@ -239,110 +228,70 @@ export default function VaultPage() {
     }
   }
 
-  async function handleAddCredential() {
-    if (!profile || profile.role !== 'admin') {
-      toast.error('Only System Admins can create credentials');
-      return;
-    }
-
-    if (!newCred.name || !newCred.password) {
-      toast.error('Name and Secret/Password are required');
-      return;
-    }
-
-    try {
-      let encryptedData = '';
-
-      try {
-        const encRes = await fetch('/api/vault/encrypt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password: newCred.password }),
-        });
-
-        if (encRes.ok) {
-          const encData = await encRes.json();
-          encryptedData = encData.encryptedData;
-        }
-      } catch {
-        // Fallback
-      }
-
-      if (!encryptedData) {
-        encryptedData = await encryptSecret(newCred.password);
-      }
-
-      const payload: Record<string, any> = {
-        name: newCred.name,
-        category_id: newCred.category_id,
-        platform_name: newCred.platform_name,
-        username: newCred.username,
-        password_encrypted: encryptedData,
-        description: newCred.description,
-        access_level: newCred.access_level,
-        required_role: newCred.required_role,
-        created_by: profile.id,
-      };
-
-      if (newCred.team_id !== 'all') {
-        payload.team_id = newCred.team_id;
-      }
-
-      const { error } = await supabase.from('credential_vault').insert(payload);
-
-      if (error) throw error;
-
-      toast.success('Credential secured and saved');
-      setShowAddDialog(false);
-      setNewCred({
-        name: '',
-        category_id: categories[0]?.id || 'hosting',
-        platform_name: '',
-        username: '',
-        password: '',
-        description: '',
-        access_level: 'restricted',
-        required_role: 'developer',
-        team_id: 'all',
-      });
-      fetchData();
-    } catch (error: any) {
-      console.error('Error adding credential:', error);
-      toast.error(error?.message || 'Failed to save credential');
-    }
-  }
-
   function canViewCredential(cred: any): boolean {
     if (!profile) return false;
-    const userRole = (profile.role || '').toLowerCase();
+    const userRole = normalizeRole(profile.role);
     
-    // Executive & Management Roles have global access
+    // Executive & Administrative Roles have full access
     if (['admin', 'director', 'manager', 'legal_counsel', 'security_officer'].includes(userRole)) {
       return true;
     }
 
-    // Check Team Gating
-    if (cred.team_id && !userTeamIds.includes(cred.team_id)) {
+    // Check Team Gating (if assigned to a specific team)
+    if (cred.team_id && cred.team_id !== 'all' && !userTeamIds.includes(cred.team_id)) {
       return false;
     }
 
-    // Role-to-Category Permission Matrix
-    const cat = (cred.category_id || '').toLowerCase();
-    
-    if (userRole === 'developer' && !['code', 'hosting'].includes(cat)) return false;
-    if (userRole === 'qa' && !['code', 'hosting'].includes(cat)) return false;
-    if (userRole === 'designer' && !['design', 'marketing', 'code'].includes(cat)) return false;
-    if (userRole === 'sales' && !['marketing', 'internal'].includes(cat)) return false;
-    if (userRole === 'hr' && !['hr', 'internal'].includes(cat)) return false;
-
-    // Direct Role Match or Public
-    if (cred.access_level === 'public') return true;
-    if (cred.access_level === 'restricted' && (cred.required_role === 'all' || cred.required_role === userRole)) return true;
-
-    // Check Explicit Access Request Approval
-    return accessRequests.some(
+    // Check Explicit Access Request Approvals
+    const hasApprovedRequest = accessRequests.some(
       (r) => r.credential_id === cred.id && r.status === 'approved' && new Date(r.expires_at || '') > new Date()
     );
+    if (hasApprovedRequest) return true;
+
+    // Resolve raw UUID category ID to name
+    const categoryName = getCategoryName(cred.category_id).toLowerCase();
+    const credRequiredRole = normalizeRole(cred.required_role || 'all');
+
+    // DEVELOPER ACCESS
+    if (userRole === 'developer') {
+      const isDevCategory = categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general');
+      const isDevRoleReq = credRequiredRole === 'all' || credRequiredRole === 'developer';
+      return isDevCategory || isDevRoleReq;
+    }
+
+    // QA ACCESS
+    if (userRole === 'qa') {
+      const isQACategory = categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general');
+      const isQARoleReq = credRequiredRole === 'all' || credRequiredRole === 'qa' || credRequiredRole === 'developer';
+      return isQACategory || isQARoleReq;
+    }
+
+    // DESIGNER ACCESS
+    if (userRole === 'designer') {
+      const isDesignCategory = categoryName.includes('design') || categoryName.includes('marketing') || categoryName.includes('general');
+      const isDesignRoleReq = credRequiredRole === 'all' || credRequiredRole === 'designer';
+      return isDesignCategory || isDesignRoleReq;
+    }
+
+    // SALES ACCESS
+    if (userRole === 'sales') {
+      const isSalesCategory = categoryName.includes('marketing') || categoryName.includes('internal') || categoryName.includes('general');
+      const isSalesRoleReq = credRequiredRole === 'all' || credRequiredRole === 'sales';
+      return isSalesCategory || isSalesRoleReq;
+    }
+
+    // HR ACCESS
+    if (userRole === 'hr') {
+      const isHRCategory = categoryName.includes('hr') || categoryName.includes('people') || categoryName.includes('internal') || categoryName.includes('general');
+      const isHRRoleReq = credRequiredRole === 'all' || credRequiredRole === 'hr';
+      return isHRCategory || isHRRoleReq;
+    }
+
+    // Default Fallback Checks
+    if (cred.access_level === 'public') return true;
+    if (credRequiredRole === 'all' || credRequiredRole === userRole) return true;
+
+    return false;
   }
 
   function copyToClipboard(text: string, id: string) {
@@ -386,123 +335,6 @@ export default function VaultPage() {
             <h1 className="text-2xl font-bold text-slate-900">Platform Keyring</h1>
             <p className="text-slate-600">Role & Team gated credential management</p>
           </div>
-          {isAdmin && (
-            <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-              <DialogTrigger asChild>
-                <Button>
-                  <Plus className="mr-2 h-4 w-4" /> Add Credential
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Add New Credential</DialogTitle>
-                  <DialogDescription>Store AES-256 encrypted access key</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label>Credential Title</Label>
-                    <Input
-                      value={newCred.name}
-                      onChange={(e) => setNewCred({ ...newCred, name: e.target.value })}
-                      placeholder="e.g., Production Database"
-                    />
-                  </div>
-                  <div>
-                    <Label>Category</Label>
-                    <Select
-                      value={newCred.category_id}
-                      onValueChange={(v) => setNewCred({ ...newCred, category_id: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat.id} value={cat.id}>
-                            {cat.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {teams.length > 0 && (
-                    <div>
-                      <Label>Assign to Specific Team (Optional)</Label>
-                      <Select
-                        value={newCred.team_id}
-                        onValueChange={(v) => setNewCred({ ...newCred, team_id: v })}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">All Organization Teams</SelectItem>
-                          {teams.map((t) => (
-                            <SelectItem key={t.id} value={t.id}>
-                              {t.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
-                  <div>
-                    <Label>Platform Name</Label>
-                    <Input
-                      value={newCred.platform_name}
-                      onChange={(e) => setNewCred({ ...newCred, platform_name: e.target.value })}
-                      placeholder="e.g., Vercel, Supabase, MTN MoMo API"
-                    />
-                  </div>
-                  <div>
-                    <Label>Identifier / Username</Label>
-                    <Input
-                      value={newCred.username}
-                      onChange={(e) => setNewCred({ ...newCred, username: e.target.value })}
-                      placeholder="Username, Email, or API Client ID"
-                    />
-                  </div>
-                  <div>
-                    <Label>Raw Secret / Password</Label>
-                    <Input
-                      type="password"
-                      value={newCred.password}
-                      onChange={(e) => setNewCred({ ...newCred, password: e.target.value })}
-                      placeholder="Encrypted automatically on submission"
-                    />
-                  </div>
-                  <div>
-                    <Label>Target Role Access Level</Label>
-                    <Select
-                      value={newCred.required_role}
-                      onValueChange={(v) => setNewCred({ ...newCred, required_role: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Authorized Roles</SelectItem>
-                        <SelectItem value="developer">Developer</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="designer">Designer</SelectItem>
-                        <SelectItem value="qa">QA</SelectItem>
-                        <SelectItem value="sales">Sales</SelectItem>
-                        <SelectItem value="hr">HR</SelectItem>
-                        <SelectItem value="director">Director</SelectItem>
-                        <SelectItem value="legal_counsel">Legal Counsel</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>
-                    Cancel
-                  </Button>
-                  <Button onClick={handleAddCredential}>Encrypt & Save</Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          )}
         </div>
 
         {/* Filter Toolbar */}
