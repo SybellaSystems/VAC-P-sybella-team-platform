@@ -25,15 +25,25 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Plus, Search } from 'lucide-react';
+import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Plus, Search, Users } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import type { CredentialVault, CredentialAccessRequest } from '@/lib/database.types';
 
 type AccessRequestWithCredential = CredentialAccessRequest & { credential?: { name: string } };
 
-// Sybella Default Categories structured for internal systems
-const SYBELLA_CATEGORIES = [
+type CategoryOption = {
+  id: string;
+  name: string;
+};
+
+type TeamOption = {
+  id: string;
+  name: string;
+};
+
+// Fallback Default Categories
+const DEFAULT_CATEGORIES: CategoryOption[] = [
   { id: 'hosting', name: 'Hosting (Vercel, Render, Cloudflare)' },
   { id: 'code', name: 'Code (GitHub, GitLab)' },
   { id: 'finance', name: 'Finance (Bank, Mobile Money)' },
@@ -41,7 +51,7 @@ const SYBELLA_CATEGORIES = [
   { id: 'internal', name: 'Internal (Email, Admin Accounts)' },
 ];
 
-// Fallback Web Crypto helper in case custom backend encryption endpoint is unavailable
+// Web Crypto Helper for Client-side AES-GCM fallback
 async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -102,6 +112,9 @@ export default function VaultPage() {
 
   const [credentials, setCredentials] = useState<CredentialVault[]>([]);
   const [accessRequests, setAccessRequests] = useState<AccessRequestWithCredential[]>([]);
+  const [categories, setCategories] = useState<CategoryOption[]>(DEFAULT_CATEGORIES);
+  const [teams, setTeams] = useState<TeamOption[]>([]);
+  const [userTeamIds, setUserTeamIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -121,6 +134,7 @@ export default function VaultPage() {
     description: '',
     access_level: 'restricted' as 'public' | 'restricted' | 'admin_only',
     required_role: 'developer',
+    team_id: 'all',
   });
 
   useEffect(() => {
@@ -132,22 +146,37 @@ export default function VaultPage() {
   async function fetchData() {
     setLoading(true);
     try {
-      const [credsRes, requestsRes] = await Promise.all([
+      // Execute all DB queries with clean error boundaries
+      const [credsRes, requestsRes, categoriesRes, teamsRes, userTeamsRes] = await Promise.all([
         supabase.from('credential_vault').select('*').order('created_at', { ascending: false }),
-        supabase.from('credential_access_requests').select('*, credential:credential_vault(name)').eq('user_id', profile?.id).order('requested_at', { ascending: false }),
+        supabase.from('credential_access_requests').select('*, credential:credential_vault(name)').eq('user_id', profile?.id || '').order('requested_at', { ascending: false }),
+        supabase.from('credential_categories').select('id, name'),
+        supabase.from('teams').select('id, name'),
+        supabase.from('team_members').select('team_id').eq('user_id', profile?.id || ''),
       ]);
 
       if (credsRes.data) setCredentials(credsRes.data);
       if (requestsRes.data) setAccessRequests(requestsRes.data);
+      
+      if (categoriesRes.data && categoriesRes.data.length > 0) {
+        setCategories(categoriesRes.data);
+      }
+      
+      if (teamsRes.data) {
+        setTeams(teamsRes.data);
+      }
+
+      if (userTeamsRes.data) {
+        setUserTeamIds(userTeamsRes.data.map((tm: any) => tm.team_id));
+      }
     } catch (error) {
-      console.error('Error fetching data:', error);
+      console.error('Error fetching vault data:', error);
       toast.error('Failed to load credentials');
     } finally {
       setLoading(false);
     }
   }
 
-  // Request decryption (tries API first, falls back to Web Crypto if route is 404)
   async function togglePasswordVisibility(credId: string, encryptedValue: string) {
     if (visiblePasswords[credId]) {
       setVisiblePasswords((prev) => ({ ...prev, [credId]: false }));
@@ -161,24 +190,31 @@ export default function VaultPage() {
 
     try {
       let rawPassword = '';
-      const response = await fetch('/api/vault/decrypt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ encryptedData: encryptedValue }),
-      });
+      
+      // Attempt backend decryption endpoint without throwing console network errors
+      try {
+        const response = await fetch('/api/vault/decrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encryptedData: encryptedValue }),
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        rawPassword = data.rawPassword;
-      } else {
-        // Fallback to client-side decrypt if backend endpoint 404s
+        if (response.ok) {
+          const data = await response.json();
+          rawPassword = data.rawPassword;
+        }
+      } catch {
+        // Fall back to Web Crypto silently
+      }
+
+      if (!rawPassword) {
         rawPassword = await decryptSecret(encryptedValue);
       }
 
       setDecryptedPasswords((prev) => ({ ...prev, [credId]: rawPassword }));
       setVisiblePasswords((prev) => ({ ...prev, [credId]: true }));
     } catch (err) {
-      console.error('Decryption failed:', err);
+      console.error('Decryption error:', err);
       toast.error('Decryption failed or access denied');
     }
   }
@@ -190,28 +226,33 @@ export default function VaultPage() {
     }
 
     if (!newCred.name || !newCred.password) {
-      toast.error('Name and Password are required');
+      toast.error('Name and Secret/Password are required');
       return;
     }
 
     try {
       let encryptedData = '';
 
-      // Attempt API route first, fallback to Web Crypto if route returns 404
-      const encRes = await fetch('/api/vault/encrypt', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: newCred.password }),
-      });
+      try {
+        const encRes = await fetch('/api/vault/encrypt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: newCred.password }),
+        });
 
-      if (encRes.ok) {
-        const encData = await encRes.json();
-        encryptedData = encData.encryptedData;
-      } else {
+        if (encRes.ok) {
+          const encData = await encRes.json();
+          encryptedData = encData.encryptedData;
+        }
+      } catch {
+        // Web Crypto fallback
+      }
+
+      if (!encryptedData) {
         encryptedData = await encryptSecret(newCred.password);
       }
 
-      const { error } = await supabase.from('credential_vault').insert({
+      const payload: Record<string, any> = {
         name: newCred.name,
         category_id: newCred.category_id,
         platform_name: newCred.platform_name,
@@ -221,7 +262,14 @@ export default function VaultPage() {
         access_level: newCred.access_level,
         required_role: newCred.required_role,
         created_by: profile.id,
-      });
+      };
+
+      // Assign team_id if selecting a specific team
+      if (newCred.team_id !== 'all') {
+        payload.team_id = newCred.team_id;
+      }
+
+      const { error } = await supabase.from('credential_vault').insert(payload);
 
       if (error) throw error;
 
@@ -229,13 +277,14 @@ export default function VaultPage() {
       setShowAddDialog(false);
       setNewCred({
         name: '',
-        category_id: 'hosting',
+        category_id: categories[0]?.id || 'hosting',
         platform_name: '',
         username: '',
         password: '',
         description: '',
         access_level: 'restricted',
         required_role: 'developer',
+        team_id: 'all',
       });
       fetchData();
     } catch (error: any) {
@@ -244,16 +293,25 @@ export default function VaultPage() {
     }
   }
 
-  function canViewCredential(cred: CredentialVault): boolean {
+  function canViewCredential(cred: any): boolean {
     if (!profile) return false;
-    if (profile.role === 'admin' || profile.role === 'security_officer') return true;
-    if (profile.role === 'employee') return false;
+    const userRole = (profile.role || '').toLowerCase();
     
-    if (profile.role === 'developer' && cred.category_id !== 'code' && cred.category_id !== 'hosting') return false;
-    if (profile.role === 'finance' && cred.category_id !== 'finance') return false;
+    // Admins and Security Officers have global bypass
+    if (userRole === 'admin' || userRole === 'security_officer') return true;
+    if (userRole === 'employee') return false;
+    
+    // Check team access requirement if specified on the credential
+    if (cred.team_id && !userTeamIds.includes(cred.team_id)) {
+      return false;
+    }
+
+    // Role mapping rules
+    if (userRole === 'developer' && cred.category_id !== 'code' && cred.category_id !== 'hosting') return false;
+    if (userRole === 'finance' && cred.category_id !== 'finance') return false;
 
     if (cred.access_level === 'public') return true;
-    if (cred.access_level === 'restricted' && (cred.required_role === 'all' || cred.required_role === profile.role)) return true;
+    if (cred.access_level === 'restricted' && (cred.required_role === 'all' || cred.required_role === userRole)) return true;
 
     return accessRequests.some(
       (r) => r.credential_id === cred.id && r.status === 'approved' && new Date(r.expires_at || '') > new Date()
@@ -261,6 +319,7 @@ export default function VaultPage() {
   }
 
   function copyToClipboard(text: string, id: string) {
+    if (!text) return;
     navigator.clipboard.writeText(text);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
@@ -268,9 +327,11 @@ export default function VaultPage() {
   }
 
   const filteredCredentials = credentials.filter((cred) => {
-    const matchesSearch =
-      cred.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      cred.platform_name.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase();
+    const credName = (cred.name || '').toLowerCase();
+    const platformName = (cred.platform_name || '').toLowerCase();
+
+    const matchesSearch = credName.includes(query) || platformName.includes(query);
     if (activeTab === 'all') return matchesSearch;
     return matchesSearch && cred.category_id === activeTab;
   });
@@ -295,7 +356,7 @@ export default function VaultPage() {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Platform Keyring</h1>
-            <p className="text-slate-600">Role-gated credential management</p>
+            <p className="text-slate-600">Role & Team gated credential management</p>
           </div>
           {isAdmin && (
             <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
@@ -328,7 +389,7 @@ export default function VaultPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {SYBELLA_CATEGORIES.map((cat) => (
+                        {categories.map((cat) => (
                           <SelectItem key={cat.id} value={cat.id}>
                             {cat.name}
                           </SelectItem>
@@ -336,6 +397,27 @@ export default function VaultPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  {teams.length > 0 && (
+                    <div>
+                      <Label>Assign to Specific Team (Optional)</Label>
+                      <Select
+                        value={newCred.team_id}
+                        onValueChange={(v) => setNewCred({ ...newCred, team_id: v })}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Organization Teams</SelectItem>
+                          {teams.map((t) => (
+                            <SelectItem key={t.id} value={t.id}>
+                              {t.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div>
                     <Label>Platform Name</Label>
                     <Input
@@ -404,9 +486,9 @@ export default function VaultPage() {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="all">All</TabsTrigger>
-            {SYBELLA_CATEGORIES.map((cat) => (
+            {categories.map((cat) => (
               <TabsTrigger key={cat.id} value={cat.id}>
                 {cat.id.toUpperCase()}
               </TabsTrigger>
@@ -417,6 +499,8 @@ export default function VaultPage() {
             <div className="grid gap-4">
               {filteredCredentials.map((cred) => {
                 const canView = canViewCredential(cred);
+                const assignedTeam = teams.find((t) => t.id === (cred as any).team_id);
+
                 return (
                   <Card key={cred.id} className={!canView ? 'opacity-60' : ''}>
                     <CardContent className="p-6">
@@ -430,11 +514,16 @@ export default function VaultPage() {
                             )}
                           </div>
                           <div>
-                            <h3 className="font-semibold text-lg">{cred.name}</h3>
-                            <p className="text-slate-600">{cred.platform_name}</p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Badge variant="outline">{cred.category_id}</Badge>
-                              <Badge variant="secondary">{cred.required_role}</Badge>
+                            <h3 className="font-semibold text-lg">{cred.name || 'Untitled Key'}</h3>
+                            <p className="text-slate-600">{cred.platform_name || 'N/A'}</p>
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <Badge variant="outline">{cred.category_id || 'general'}</Badge>
+                              <Badge variant="secondary">{cred.required_role || 'all'}</Badge>
+                              {assignedTeam && (
+                                <Badge variant="default" className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" /> {assignedTeam.name}
+                                </Badge>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -469,7 +558,7 @@ export default function VaultPage() {
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <Label className="text-slate-500 text-xs">Username / Access Key</Label>
-                              <p className="font-mono text-sm">{cred.username}</p>
+                              <p className="font-mono text-sm">{cred.username || '—'}</p>
                             </div>
                             <div>
                               <Label className="text-slate-500 text-xs">Password / Secret</Label>
