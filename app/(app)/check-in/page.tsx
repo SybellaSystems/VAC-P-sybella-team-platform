@@ -10,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Clock, LogIn, LogOut, CircleCheck as CheckCircle, Circle as XCircle, Calendar, Users, TrendingUp } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Clock, LogIn, LogOut, CircleCheck as CheckCircle, Circle as XCircle, Calendar, Users, TrendingUp, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 
 type CheckIn = {
   id: string;
@@ -43,6 +44,12 @@ type CheckOut = {
 
 type Profile = { id: string; full_name: string; role: string; department: string };
 
+function normalizeRole(role: string = ''): string {
+  const r = role.toLowerCase().trim();
+  if (r === 'admins') return 'admin';
+  return r;
+}
+
 export default function CheckInOutPage() {
   const { profile } = useAuth();
   const [tab, setTab] = useState<'checkin' | 'checkout'>('checkin');
@@ -53,9 +60,12 @@ export default function CheckInOutPage() {
   const [members, setMembers] = useState<Record<string, Profile>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [expandedMembers, setExpandedMembers] = useState<Record<string, boolean>>({});
 
   const today = new Date().toISOString().split('T')[0];
-  const canViewTeam = ['admin', 'director', 'manager', 'hr'].includes(profile?.role || '');
+  const userRole = normalizeRole(profile?.role || '');
+  const isAdmin = userRole === 'admin';
+  const canViewTeam = ['admin', 'director', 'manager', 'hr'].includes(userRole);
 
   const [checkInForm, setCheckInForm] = useState({
     availability: 'available',
@@ -106,6 +116,10 @@ export default function CheckInOutPage() {
     setTeamCheckOuts(coutMap);
 
     setLoading(false);
+  };
+
+  const toggleMemberExpand = (id: string) => {
+    setExpandedMembers(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const submitCheckIn = async () => {
@@ -352,13 +366,135 @@ export default function CheckInOutPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Team Status Today</CardTitle>
-              <CardDescription>Who has checked in and out</CardDescription>
+              <CardDescription>
+                {isAdmin ? 'Detailed view of submitted check-ins and check-outs' : 'Who has checked in and out'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {Object.values(members).map(member => {
                   const cin = teamCheckIns[member.id];
                   const cout = teamCheckOuts[member.id];
+                  const isExpanded = !!expandedMembers[member.id];
+
+                  // ADMIN FULL SUBMISSION VIEW
+                  if (isAdmin) {
+                    return (
+                      <div key={member.id} className="rounded-lg border border-border overflow-hidden bg-card">
+                        <div 
+                          className="flex items-center gap-3 p-3 bg-muted/20 cursor-pointer hover:bg-muted/40 transition-colors"
+                          onClick={() => toggleMemberExpand(member.id)}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[10px] font-bold">{member.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground truncate">{member.full_name}</p>
+                              <Badge variant="outline" className="text-[10px] uppercase">{member.role || 'Member'}</Badge>
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">{member.department || 'General'}</p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 text-xs">
+                              <span className="flex items-center gap-1">
+                                {cin?.status === 'submitted' ? <CheckCircle size={14} className="text-emerald-600" /> : <XCircle size={14} className="text-slate-300" />}
+                                Morning
+                              </span>
+                              <span className="flex items-center gap-1">
+                                {cout?.status === 'submitted' ? <CheckCircle size={14} className="text-emerald-600" /> : <XCircle size={14} className="text-slate-300" />}
+                                Evening
+                              </span>
+                            </div>
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </div>
+                        </div>
+
+                        {/* EXPANDED ADMIN SUBMISSION DETAILS */}
+                        {isExpanded && (
+                          <div className="p-4 space-y-4 border-t border-border bg-card text-xs">
+                            {/* MORNING DETAILS */}
+                            <div className="space-y-2">
+                              <div className="flex items-center gap-1.5 font-semibold text-primary">
+                                <LogIn size={14} />
+                                Morning Check-In Details {cin?.submitted_at && `(${new Date(cin.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                              </div>
+                              {cin?.status === 'submitted' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-md bg-muted/30">
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Availability:</span>
+                                    <span className="capitalize">{cin.availability}</span>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Priorities:</span>
+                                    <p className="whitespace-pre-wrap">{cin.priorities || 'None provided'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Expected Deliverables:</span>
+                                    <p className="whitespace-pre-wrap">{cin.expected_deliverables || 'None provided'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Planned Meetings:</span>
+                                    <p className="whitespace-pre-wrap">{cin.planned_meetings || 'None provided'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Known Blockers:</span>
+                                    <p className="whitespace-pre-wrap">{cin.known_blockers || 'None'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Assistance Required:</span>
+                                    <p className="whitespace-pre-wrap">{cin.assistance_required || 'None'}</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-muted-foreground italic p-2">No check-in submitted for today.</p>
+                              )}
+                            </div>
+
+                            {/* EVENING DETAILS */}
+                            <div className="space-y-2 pt-2 border-t border-border">
+                              <div className="flex items-center gap-1.5 font-semibold text-primary">
+                                <LogOut size={14} />
+                                Evening Check-Out Details {cout?.submitted_at && `(${new Date(cout.submitted_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`}
+                              </div>
+                              {cout?.status === 'submitted' ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-md bg-muted/30">
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Work Completed:</span>
+                                    <p className="whitespace-pre-wrap">{cout.work_completed || 'None provided'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Deliverables Produced:</span>
+                                    <p className="whitespace-pre-wrap">{cout.deliverables_produced || 'None provided'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Time Spent:</span>
+                                    <p>{cout.time_spent_hours} hours</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Outstanding Work:</span>
+                                    <p className="whitespace-pre-wrap">{cout.outstanding_work || 'None'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Challenges:</span>
+                                    <p className="whitespace-pre-wrap">{cout.challenges_encountered || 'None'}</p>
+                                  </div>
+                                  <div>
+                                    <span className="font-medium text-muted-foreground block mb-0.5">Lessons Learned:</span>
+                                    <p className="whitespace-pre-wrap">{cout.lessons_learned || 'None'}</p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-muted-foreground italic p-2">No check-out submitted for today.</p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  // STANDARD LOG VIEW FOR OTHER ROLES
                   return (
                     <div key={member.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/30">
                       <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
