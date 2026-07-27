@@ -24,7 +24,25 @@ import {
   Step11Communication,
   Step12Review,
 } from '@/components/wizard/WizardSteps';
-import { Briefcase, Building2, FileText, DollarSign, FolderOpen, ClipboardCheck, Users, Calendar, ListTree, TriangleAlert, MessageSquare, CircleCheck, ArrowLeft, ArrowRight, Check, X, Loader as Loader2 } from 'lucide-react';
+import {
+  Briefcase,
+  Building2,
+  FileText,
+  DollarSign,
+  FolderOpen,
+  ClipboardCheck,
+  Users,
+  Calendar,
+  ListTree,
+  TriangleAlert,
+  MessageSquare,
+  CircleCheck,
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ChevronDown,
+  Loader as Loader2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 const STEP_ICONS: Record<string, React.ElementType> = {
@@ -66,8 +84,6 @@ export default function ProjectWizardPage() {
     setData((prev) => ({ ...prev, ...patch }));
   };
 
-  const canAccess = (s: number) => s <= step;
-
   const next = () => {
     if (step < 12) setStep(step + 1);
   };
@@ -105,7 +121,7 @@ export default function ProjectWizardPage() {
   if (created) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-6 sm:p-8 text-center border border-slate-100">
           <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
             <Check className="w-8 h-8 text-emerald-600" />
           </div>
@@ -117,13 +133,13 @@ export default function ProjectWizardPage() {
           <div className="space-y-2">
             <button
               onClick={() => router.push(`/projects/${created.id}`)}
-              className="w-full py-2.5 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+              className="w-full py-2.5 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors shadow-xs"
             >
               View Project
             </button>
             <button
               onClick={() => router.push('/projects')}
-              className="w-full py-2.5 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              className="w-full py-2.5 text-sm font-medium border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors"
             >
               Back to Projects
             </button>
@@ -133,12 +149,53 @@ export default function ProjectWizardPage() {
     );
   }
 
-  const currentStep = WIZARD_STEPS.find((s) => s.id === step);
+  const currentStepObj = WIZARD_STEPS.find((s) => s.id === step);
+  const CurrentStepIcon = STEP_ICONS[currentStepObj?.icon || 'Briefcase'] || Briefcase;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      {/* Sidebar - Step Navigation */}
-      <aside className="w-72 bg-slate-900 text-white flex flex-col fixed h-screen overflow-y-auto">
+    <div className="min-h-screen bg-slate-50 flex flex-col lg:flex-row">
+      {/* Mobile Sticky Header Top Bar (Hidden on Desktop) */}
+      <header className="lg:hidden sticky top-0 z-30 bg-slate-900 text-white border-b border-slate-800 px-4 py-3">
+        <div className="flex items-center justify-between mb-2">
+          <button
+            onClick={() => router.push('/projects')}
+            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-white transition-colors"
+          >
+            <ArrowLeft size={14} /> Projects
+          </button>
+          <span className="text-[11px] font-semibold text-slate-400">
+            Step {step} of 12 ({Math.round((step / 12) * 100)}%)
+          </span>
+        </div>
+
+        {/* Mobile Dropdown Step Selector */}
+        <div className="relative">
+          <CurrentStepIcon size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary pointer-events-none" />
+          <select
+            value={step}
+            onChange={(e) => setStep(Number(e.target.value))}
+            className="w-full appearance-none pl-8 pr-8 py-1.5 bg-slate-800 border border-slate-700 rounded-xl text-xs font-semibold text-white outline-none focus:ring-1 focus:ring-primary"
+          >
+            {WIZARD_STEPS.map((s) => (
+              <option key={s.id} value={s.id} disabled={s.id > step}>
+                Step {s.id}: {s.name} {s.id > step ? '(Locked)' : ''}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
+        {/* Mobile Top Progress Bar */}
+        <div className="w-full h-1 bg-white/10 rounded-full mt-2.5 overflow-hidden">
+          <div
+            className="h-full bg-primary rounded-full transition-all duration-300"
+            style={{ width: `${(step / 12) * 100}%` }}
+          />
+        </div>
+      </header>
+
+      {/* Desktop Sidebar Navigator (HIDDEN on Mobile: `hidden lg:flex`) */}
+      <aside className="hidden lg:flex w-72 bg-slate-900 text-white flex-col fixed h-screen overflow-y-auto">
         <div className="px-5 py-5 border-b border-white/10">
           <button
             onClick={() => router.push('/projects')}
@@ -160,12 +217,12 @@ export default function ProjectWizardPage() {
                 key={s.id}
                 onClick={() => s.id <= step && setStep(s.id)}
                 disabled={s.id > step}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all ${
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
                   isActive
-                    ? 'bg-primary text-white'
+                    ? 'bg-primary text-white font-medium shadow-xs'
                     : isComplete
                     ? 'text-slate-300 hover:bg-white/5'
-                    : 'text-slate-500 cursor-not-allowed'
+                    : 'text-slate-500 cursor-not-allowed opacity-60'
                 }`}
               >
                 <div
@@ -175,28 +232,28 @@ export default function ProjectWizardPage() {
                 >
                   {isComplete ? <Check size={14} /> : <Icon size={14} />}
                 </div>
-                <span className="text-xs font-medium">{s.name}</span>
+                <span className="text-xs font-medium truncate">{s.name}</span>
               </button>
             );
           })}
         </nav>
 
-        <div className="px-5 py-4 border-t border-white/10">
+        <div className="px-5 py-4 border-t border-white/10 shrink-0">
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-400">Progress</span>
             <span className="font-semibold text-white">{Math.round((step / 12) * 100)}%</span>
           </div>
-          <div className="w-full h-1.5 bg-white/10 rounded-full mt-2">
+          <div className="w-full h-1.5 bg-white/10 rounded-full mt-2 overflow-hidden">
             <div className="h-1.5 bg-primary rounded-full transition-all" style={{ width: `${(step / 12) * 100}%` }} />
           </div>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 ml-72 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          {/* Step content */}
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 mb-6">
+      {/* Main Content Viewport */}
+      <main className="flex-1 ml-0 lg:ml-72 flex flex-col justify-between min-h-screen pb-20 lg:pb-8">
+        <div className="max-w-4xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-8 flex-1">
+          {/* Step Container */}
+          <div className="bg-white rounded-2xl shadow-xs border border-slate-200 p-4 sm:p-6 lg:p-8">
             {step === 1 && <Step1ProjectType data={data} update={update} />}
             {step === 2 && <Step2Owner data={data} update={update} />}
             {step === 3 && <Step3Information data={data} update={update} />}
@@ -210,13 +267,15 @@ export default function ProjectWizardPage() {
             {step === 11 && <Step11Communication data={data} update={update} />}
             {step === 12 && <Step12Review data={data} update={update} />}
           </div>
+        </div>
 
-          {/* Navigation */}
-          <div className="flex items-center justify-between">
+        {/* Footer Actions (Sticky on Mobile, Standard on Desktop) */}
+        <div className="fixed bottom-0 left-0 right-0 lg:static bg-white border-t border-slate-200 px-4 py-3 z-20 shadow-lg lg:shadow-none">
+          <div className="max-w-4xl mx-auto flex items-center justify-between gap-3">
             <button
               onClick={back}
               disabled={step === 1}
-              className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-medium text-slate-600 border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <ArrowLeft size={16} /> Back
             </button>
@@ -224,7 +283,7 @@ export default function ProjectWizardPage() {
             {step < 12 ? (
               <button
                 onClick={next}
-                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+                className="flex items-center gap-1.5 sm:gap-2 px-4 sm:px-5 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors shadow-xs"
               >
                 Continue <ArrowRight size={16} />
               </button>
@@ -232,7 +291,7 @@ export default function ProjectWizardPage() {
               <button
                 onClick={handleCreate}
                 disabled={creating}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-60"
+                className="flex items-center gap-1.5 sm:gap-2 px-5 sm:px-6 py-2 sm:py-2.5 text-xs sm:text-sm font-semibold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-colors disabled:opacity-60 shadow-xs"
               >
                 {creating ? (
                   <>
