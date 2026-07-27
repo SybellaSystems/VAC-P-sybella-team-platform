@@ -89,7 +89,13 @@ async function encryptSecret(plainText: string): Promise<string> {
   const combined = new Uint8Array(iv.length + encrypted.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.length);
-  return btoa(String.fromCharCode(...combined));
+
+  // Use Array.from to avoid TS downlevelIteration errors on Uint8Array
+  const binaryString = Array.from(combined)
+    .map((byte) => String.fromCharCode(byte))
+    .join('');
+
+  return btoa(binaryString);
 }
 
 async function decryptSecret(cipherText: string): Promise<string> {
