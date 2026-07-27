@@ -120,24 +120,28 @@ export default function RisksPage() {
   }, [profile]);
 
   async function fetchRisks() {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase
-        .from('project_risks')
-        .select('*, project:projects!project_risks_project_id_fkey(id,name), owner:profiles!project_risks_owner_id_fkey(full_name)')
-        .order('created_at', { ascending: false });
+  setLoading(true);
+  setError(null);
+  try {
+    const { data, error } = await supabase
+      .from('project_risks')
+      .select(`
+        *,
+        project:projects!project_risks_project_id_fkey(id, name),
+        owner:profiles!project_risks_owner_fkey(full_name)
+      `)
+      .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setRisks((data as ProjectRisk[]) || []);
-    } catch (err: any) {
-      console.error('Error fetching risks:', err);
-      setError(err?.message || 'Failed to load risks');
-      toast.error('Failed to load risks');
-    } finally {
-      setLoading(false);
-    }
+    if (error) throw error;
+    setRisks((data as ProjectRisk[]) || []);
+  } catch (err: any) {
+    console.error('Error fetching risks:', err);
+    setError(err?.message || 'Failed to load risks');
+    toast.error('Failed to load risks');
+  } finally {
+    setLoading(false);
   }
+}
 
   async function fetchProjects() {
     try {
