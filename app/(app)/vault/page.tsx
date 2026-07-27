@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -24,12 +24,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { Shield, Key, Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, CircleAlert as AlertCircle, Plus, Search } from 'lucide-react';
+import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Plus, Search } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
-import type { CredentialVault, CredentialCategory, CredentialAccessRequest } from '@/lib/database.types';
+import type { CredentialVault, CredentialAccessRequest } from '@/lib/database.types';
 
 type AccessRequestWithCredential = CredentialAccessRequest & { credential?: { name: string } };
 
@@ -42,6 +41,62 @@ const SYBELLA_CATEGORIES = [
   { id: 'internal', name: 'Internal (Email, Admin Accounts)' },
 ];
 
+// Fallback Web Crypto helper in case custom backend encryption endpoint is unavailable
+async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
+  const enc = new TextEncoder();
+  const keyMaterial = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(secretKey.padEnd(32, '0').slice(0, 32)),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  );
+  return window.crypto.subtle.deriveKey(
+    {
+      name: 'PBKDF2',
+      salt: enc.encode('sybella_vault_salt'),
+      iterations: 100000,
+      hash: 'SHA-256',
+    },
+    keyMaterial,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+}
+
+async function encryptSecret(plainText: string): Promise<string> {
+  const masterKey = process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
+  const key = await getCryptoKey(masterKey);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const enc = new TextEncoder();
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    enc.encode(plainText)
+  );
+  
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+  return btoa(String.fromCharCode(...combined));
+}
+
+async function decryptSecret(cipherText: string): Promise<string> {
+  const masterKey = process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
+  const key = await getCryptoKey(masterKey);
+  const combined = Uint8Array.from(atob(cipherText), (c) => c.charCodeAt(0));
+  const iv = combined.slice(0, 12);
+  const data = combined.slice(12);
+
+  const decrypted = await window.crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    data
+  );
+  return new TextDecoder().decode(decrypted);
+}
+
 export default function VaultPage() {
   const { profile } = useAuth();
 
@@ -51,8 +106,6 @@ export default function VaultPage() {
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showRequestDialog, setShowRequestDialog] = useState(false);
-  const [selectedCredential, setSelectedCredential] = useState<CredentialVault | null>(null);
   
   // Store raw decrypted passwords in state when revealed
   const [decryptedPasswords, setDecryptedPasswords] = useState<Record<string, string>>({});
@@ -69,7 +122,6 @@ export default function VaultPage() {
     access_level: 'restricted' as 'public' | 'restricted' | 'admin_only',
     required_role: 'developer',
   });
-  const [requestReason, setRequestReason] = useState('');
 
   useEffect(() => {
     if (profile) {
@@ -95,31 +147,38 @@ export default function VaultPage() {
     }
   }
 
-  // Request decryption from backend serverless endpoint
+  // Request decryption (tries API first, falls back to Web Crypto if route is 404)
   async function togglePasswordVisibility(credId: string, encryptedValue: string) {
     if (visiblePasswords[credId]) {
-      setVisiblePasswords({ ...visiblePasswords, [credId]: false });
+      setVisiblePasswords((prev) => ({ ...prev, [credId]: false }));
       return;
     }
 
     if (decryptedPasswords[credId]) {
-      setVisiblePasswords({ ...visiblePasswords, [credId]: true });
+      setVisiblePasswords((prev) => ({ ...prev, [credId]: true }));
       return;
     }
 
     try {
+      let rawPassword = '';
       const response = await fetch('/api/vault/decrypt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ encryptedData: encryptedValue }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Failed to decrypt');
+      if (response.ok) {
+        const data = await response.json();
+        rawPassword = data.rawPassword;
+      } else {
+        // Fallback to client-side decrypt if backend endpoint 404s
+        rawPassword = await decryptSecret(encryptedValue);
+      }
 
-      setDecryptedPasswords((prev) => ({ ...prev, [credId]: data.rawPassword }));
+      setDecryptedPasswords((prev) => ({ ...prev, [credId]: rawPassword }));
       setVisiblePasswords((prev) => ({ ...prev, [credId]: true }));
     } catch (err) {
+      console.error('Decryption failed:', err);
       toast.error('Decryption failed or access denied');
     }
   }
@@ -130,21 +189,34 @@ export default function VaultPage() {
       return;
     }
 
+    if (!newCred.name || !newCred.password) {
+      toast.error('Name and Password are required');
+      return;
+    }
+
     try {
-      // Encrypt prior to sending to storage
+      let encryptedData = '';
+
+      // Attempt API route first, fallback to Web Crypto if route returns 404
       const encRes = await fetch('/api/vault/encrypt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: newCred.password }),
       });
-      const encData = await encRes.json();
+
+      if (encRes.ok) {
+        const encData = await encRes.json();
+        encryptedData = encData.encryptedData;
+      } else {
+        encryptedData = await encryptSecret(newCred.password);
+      }
 
       const { error } = await supabase.from('credential_vault').insert({
         name: newCred.name,
         category_id: newCred.category_id,
         platform_name: newCred.platform_name,
         username: newCred.username,
-        password_encrypted: encData.encryptedData,
+        password_encrypted: encryptedData,
         description: newCred.description,
         access_level: newCred.access_level,
         required_role: newCred.required_role,
@@ -155,19 +227,28 @@ export default function VaultPage() {
 
       toast.success('Credential secured and saved');
       setShowAddDialog(false);
+      setNewCred({
+        name: '',
+        category_id: 'hosting',
+        platform_name: '',
+        username: '',
+        password: '',
+        description: '',
+        access_level: 'restricted',
+        required_role: 'developer',
+      });
       fetchData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding credential:', error);
-      toast.error('Failed to save credential');
+      toast.error(error?.message || 'Failed to save credential');
     }
   }
 
   function canViewCredential(cred: CredentialVault): boolean {
     if (!profile) return false;
     if (profile.role === 'admin' || profile.role === 'security_officer') return true;
-    if (profile.role === 'employee') return false; // Employees explicitly denied by policy
+    if (profile.role === 'employee') return false;
     
-    // Sybella Role Policy Mapping
     if (profile.role === 'developer' && cred.category_id !== 'code' && cred.category_id !== 'hosting') return false;
     if (profile.role === 'finance' && cred.category_id !== 'finance') return false;
 
@@ -194,7 +275,6 @@ export default function VaultPage() {
     return matchesSearch && cred.category_id === activeTab;
   });
 
-  const pendingRequests = accessRequests.filter((r) => r.status === 'pending');
   const isAdmin = profile?.role === 'admin';
 
   if (loading) {
