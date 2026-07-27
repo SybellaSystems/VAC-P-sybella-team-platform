@@ -42,22 +42,23 @@ type TeamOption = {
   name: string;
 };
 
-// Default static categories for fallback and key-mapping
+// Supported Default Categories
 const DEFAULT_CATEGORIES: CategoryOption[] = [
   { id: 'hosting', name: 'Hosting' },
   { id: 'code', name: 'Code' },
   { id: 'finance', name: 'Finance' },
   { id: 'marketing', name: 'Marketing' },
   { id: 'internal', name: 'Internal' },
+  { id: 'hr', name: 'HR & People' },
+  { id: 'design', name: 'Design' },
 ];
 
-// Helper to check if a string is a raw UUID
 function isUUID(str: string): boolean {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   return uuidRegex.test(str);
 }
 
-// Web Crypto Helper for Client-side AES-GCM fallback
+// Web Crypto Helper
 async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -168,7 +169,6 @@ export default function VaultPage() {
       if (requestsRes.data) setAccessRequests(requestsRes.data);
       
       if (categoriesRes.data && categoriesRes.data.length > 0) {
-        // Filter out UUID entries in categories table if name isn't clean
         const cleanCategories = categoriesRes.data
           .filter((cat) => !isUUID(cat.name))
           .map((cat) => ({
@@ -180,13 +180,8 @@ export default function VaultPage() {
         setCategories(DEFAULT_CATEGORIES);
       }
       
-      if (teamsRes.data) {
-        setTeams(teamsRes.data);
-      }
-
-      if (userTeamsRes.data) {
-        setUserTeamIds(userTeamsRes.data.map((tm: any) => tm.team_id));
-      }
+      if (teamsRes.data) setTeams(teamsRes.data);
+      if (userTeamsRes.data) setUserTeamIds(userTeamsRes.data.map((tm: any) => tm.team_id));
     } catch (error) {
       console.error('Error fetching vault data:', error);
       toast.error('Failed to load credentials');
@@ -195,7 +190,6 @@ export default function VaultPage() {
     }
   }
 
-  // Get display label for category ID
   function getCategoryName(categoryId: string | null | undefined): string {
     if (!categoryId) return 'General';
     const found = categories.find((c) => c.id === categoryId || c.name.toLowerCase() === categoryId.toLowerCase());
@@ -230,7 +224,7 @@ export default function VaultPage() {
           rawPassword = data.rawPassword;
         }
       } catch {
-        // Silent crypto fallback
+        // Fallback
       }
 
       if (!rawPassword) {
@@ -322,19 +316,30 @@ export default function VaultPage() {
     if (!profile) return false;
     const userRole = (profile.role || '').toLowerCase();
     
-    if (userRole === 'admin' || userRole === 'security_officer') return true;
-    if (userRole === 'employee') return false;
-    
+    // Executive & Management Roles have global access
+    if (['admin', 'director', 'manager', 'legal_counsel', 'security_officer'].includes(userRole)) {
+      return true;
+    }
+
+    // Check Team Gating
     if (cred.team_id && !userTeamIds.includes(cred.team_id)) {
       return false;
     }
 
-    if (userRole === 'developer' && cred.category_id !== 'code' && cred.category_id !== 'hosting') return false;
-    if (userRole === 'finance' && cred.category_id !== 'finance') return false;
+    // Role-to-Category Permission Matrix
+    const cat = (cred.category_id || '').toLowerCase();
+    
+    if (userRole === 'developer' && !['code', 'hosting'].includes(cat)) return false;
+    if (userRole === 'qa' && !['code', 'hosting'].includes(cat)) return false;
+    if (userRole === 'designer' && !['design', 'marketing', 'code'].includes(cat)) return false;
+    if (userRole === 'sales' && !['marketing', 'internal'].includes(cat)) return false;
+    if (userRole === 'hr' && !['hr', 'internal'].includes(cat)) return false;
 
+    // Direct Role Match or Public
     if (cred.access_level === 'public') return true;
     if (cred.access_level === 'restricted' && (cred.required_role === 'all' || cred.required_role === userRole)) return true;
 
+    // Check Explicit Access Request Approval
     return accessRequests.some(
       (r) => r.credential_id === cred.id && r.status === 'approved' && new Date(r.expires_at || '') > new Date()
     );
@@ -477,9 +482,14 @@ export default function VaultPage() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">All Authorized Roles</SelectItem>
-                        <SelectItem value="developer">Developer Only</SelectItem>
-                        <SelectItem value="finance">Finance Only</SelectItem>
-                        <SelectItem value="security_officer">Security Officer</SelectItem>
+                        <SelectItem value="developer">Developer</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="designer">Designer</SelectItem>
+                        <SelectItem value="qa">QA</SelectItem>
+                        <SelectItem value="sales">Sales</SelectItem>
+                        <SelectItem value="hr">HR</SelectItem>
+                        <SelectItem value="director">Director</SelectItem>
+                        <SelectItem value="legal_counsel">Legal Counsel</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
