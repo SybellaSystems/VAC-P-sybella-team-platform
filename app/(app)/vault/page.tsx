@@ -42,14 +42,20 @@ type TeamOption = {
   name: string;
 };
 
-// Fallback Default Categories
+// Default static categories for fallback and key-mapping
 const DEFAULT_CATEGORIES: CategoryOption[] = [
-  { id: 'hosting', name: 'Hosting (Vercel, Render, Cloudflare)' },
-  { id: 'code', name: 'Code (GitHub, GitLab)' },
-  { id: 'finance', name: 'Finance (Bank, Mobile Money)' },
-  { id: 'marketing', name: 'Marketing (Facebook, LinkedIn, Google)' },
-  { id: 'internal', name: 'Internal (Email, Admin Accounts)' },
+  { id: 'hosting', name: 'Hosting' },
+  { id: 'code', name: 'Code' },
+  { id: 'finance', name: 'Finance' },
+  { id: 'marketing', name: 'Marketing' },
+  { id: 'internal', name: 'Internal' },
 ];
+
+// Helper to check if a string is a raw UUID
+function isUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
 
 // Web Crypto Helper for Client-side AES-GCM fallback
 async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
@@ -90,7 +96,6 @@ async function encryptSecret(plainText: string): Promise<string> {
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.length);
 
-  // Use Array.from to avoid TS downlevelIteration errors on Uint8Array
   const binaryString = Array.from(combined)
     .map((byte) => String.fromCharCode(byte))
     .join('');
@@ -126,7 +131,6 @@ export default function VaultPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   
-  // Store raw decrypted passwords in state when revealed
   const [decryptedPasswords, setDecryptedPasswords] = useState<Record<string, string>>({});
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -152,7 +156,6 @@ export default function VaultPage() {
   async function fetchData() {
     setLoading(true);
     try {
-      // Execute all DB queries with clean error boundaries
       const [credsRes, requestsRes, categoriesRes, teamsRes, userTeamsRes] = await Promise.all([
         supabase.from('credential_vault').select('*').order('created_at', { ascending: false }),
         supabase.from('credential_access_requests').select('*, credential:credential_vault(name)').eq('user_id', profile?.id || '').order('requested_at', { ascending: false }),
@@ -165,7 +168,16 @@ export default function VaultPage() {
       if (requestsRes.data) setAccessRequests(requestsRes.data);
       
       if (categoriesRes.data && categoriesRes.data.length > 0) {
-        setCategories(categoriesRes.data);
+        // Filter out UUID entries in categories table if name isn't clean
+        const cleanCategories = categoriesRes.data
+          .filter((cat) => !isUUID(cat.name))
+          .map((cat) => ({
+            id: cat.id,
+            name: cat.name || cat.id,
+          }));
+        setCategories(cleanCategories.length > 0 ? cleanCategories : DEFAULT_CATEGORIES);
+      } else {
+        setCategories(DEFAULT_CATEGORIES);
       }
       
       if (teamsRes.data) {
@@ -183,6 +195,16 @@ export default function VaultPage() {
     }
   }
 
+  // Get display label for category ID
+  function getCategoryName(categoryId: string | null | undefined): string {
+    if (!categoryId) return 'General';
+    const found = categories.find((c) => c.id === categoryId || c.name.toLowerCase() === categoryId.toLowerCase());
+    if (found) return found.name;
+    const defaultFound = DEFAULT_CATEGORIES.find((c) => c.id === categoryId);
+    if (defaultFound) return defaultFound.name;
+    return isUUID(categoryId) ? 'General' : categoryId.toUpperCase();
+  }
+
   async function togglePasswordVisibility(credId: string, encryptedValue: string) {
     if (visiblePasswords[credId]) {
       setVisiblePasswords((prev) => ({ ...prev, [credId]: false }));
@@ -196,8 +218,6 @@ export default function VaultPage() {
 
     try {
       let rawPassword = '';
-      
-      // Attempt backend decryption endpoint without throwing console network errors
       try {
         const response = await fetch('/api/vault/decrypt', {
           method: 'POST',
@@ -210,7 +230,7 @@ export default function VaultPage() {
           rawPassword = data.rawPassword;
         }
       } catch {
-        // Fall back to Web Crypto silently
+        // Silent crypto fallback
       }
 
       if (!rawPassword) {
@@ -251,7 +271,7 @@ export default function VaultPage() {
           encryptedData = encData.encryptedData;
         }
       } catch {
-        // Web Crypto fallback
+        // Fallback
       }
 
       if (!encryptedData) {
@@ -270,7 +290,6 @@ export default function VaultPage() {
         created_by: profile.id,
       };
 
-      // Assign team_id if selecting a specific team
       if (newCred.team_id !== 'all') {
         payload.team_id = newCred.team_id;
       }
@@ -303,16 +322,13 @@ export default function VaultPage() {
     if (!profile) return false;
     const userRole = (profile.role || '').toLowerCase();
     
-    // Admins and Security Officers have global bypass
     if (userRole === 'admin' || userRole === 'security_officer') return true;
     if (userRole === 'employee') return false;
     
-    // Check team access requirement if specified on the credential
     if (cred.team_id && !userTeamIds.includes(cred.team_id)) {
       return false;
     }
 
-    // Role mapping rules
     if (userRole === 'developer' && cred.category_id !== 'code' && cred.category_id !== 'hosting') return false;
     if (userRole === 'finance' && cred.category_id !== 'finance') return false;
 
@@ -339,7 +355,8 @@ export default function VaultPage() {
 
     const matchesSearch = credName.includes(query) || platformName.includes(query);
     if (activeTab === 'all') return matchesSearch;
-    return matchesSearch && cred.category_id === activeTab;
+
+    return matchesSearch && (cred.category_id === activeTab || getCategoryName(cred.category_id).toLowerCase() === activeTab.toLowerCase());
   });
 
   const isAdmin = profile?.role === 'admin';
@@ -491,12 +508,13 @@ export default function VaultPage() {
           </div>
         </div>
 
+        {/* Categories Tab Bar */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="flex flex-wrap h-auto gap-1">
             <TabsTrigger value="all">All</TabsTrigger>
             {categories.map((cat) => (
               <TabsTrigger key={cat.id} value={cat.id}>
-                {cat.id.toUpperCase()}
+                {cat.name.toUpperCase()}
               </TabsTrigger>
             ))}
           </TabsList>
@@ -506,6 +524,7 @@ export default function VaultPage() {
               {filteredCredentials.map((cred) => {
                 const canView = canViewCredential(cred);
                 const assignedTeam = teams.find((t) => t.id === (cred as any).team_id);
+                const categoryLabel = getCategoryName(cred.category_id);
 
                 return (
                   <Card key={cred.id} className={!canView ? 'opacity-60' : ''}>
@@ -523,7 +542,7 @@ export default function VaultPage() {
                             <h3 className="font-semibold text-lg">{cred.name || 'Untitled Key'}</h3>
                             <p className="text-slate-600">{cred.platform_name || 'N/A'}</p>
                             <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <Badge variant="outline">{cred.category_id || 'general'}</Badge>
+                              <Badge variant="outline">{categoryLabel}</Badge>
                               <Badge variant="secondary">{cred.required_role || 'all'}</Badge>
                               {assignedTeam && (
                                 <Badge variant="default" className="flex items-center gap-1">
