@@ -5,7 +5,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Channel, Message, Profile } from '@/lib/database.types';
-import { Send, Hash, Search, TriangleAlert as AlertTriangle, X } from 'lucide-react';
+import { Send, Hash, Search, TriangleAlert as AlertTriangle, X, ChevronDown } from 'lucide-react';
 
 export default function MessagesPage() {
   const { profile } = useAuth();
@@ -132,9 +132,8 @@ export default function MessagesPage() {
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-50/50">
       <TopBar title="Messages" subtitle="Team Communication" />
-      
+
       <div className="flex flex-1 overflow-hidden p-2 sm:p-4 gap-3 sm:gap-4 relative">
-        
         {/* Floating Sidebar - Desktop */}
         <div className="hidden md:flex w-64 bg-white/90 backdrop-blur-md border border-border shadow-md rounded-2xl flex-col flex-shrink-0 h-[calc(100vh-110px)] sticky top-0 overflow-hidden">
           <div className="p-3 border-b border-border bg-white/50">
@@ -148,10 +147,11 @@ export default function MessagesPage() {
               />
             </div>
           </div>
-          
-          {/* Scrollable channels list */}
+
           <div className="flex-1 overflow-y-auto py-2 px-1.5 space-y-0.5 custom-scrollbar">
-            <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Channels</p>
+            <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Channels
+            </p>
             {filteredChannels.map(ch => (
               <button
                 key={ch.id}
@@ -175,7 +175,9 @@ export default function MessagesPage() {
             <div className="absolute left-3 top-3 bottom-3 w-72 bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-border" onClick={e => e.stopPropagation()}>
               <div className="p-3.5 border-b border-border flex items-center justify-between bg-slate-50/50">
                 <span className="text-sm font-semibold">Channels</span>
-                <button onClick={() => setShowChannelList(false)} className="p-1 rounded-lg hover:bg-muted"><X size={16} /></button>
+                <button onClick={() => setShowChannelList(false)} className="p-1 rounded-lg hover:bg-muted">
+                  <X size={16} />
+                </button>
               </div>
               <div className="p-3 border-b border-border">
                 <div className="relative">
@@ -192,7 +194,10 @@ export default function MessagesPage() {
                 {filteredChannels.map(ch => (
                   <button
                     key={ch.id}
-                    onClick={() => { setActiveChannel(ch); setShowChannelList(false); }}
+                    onClick={() => {
+                      setActiveChannel(ch);
+                      setShowChannelList(false);
+                    }}
                     className={`w-full flex items-center gap-2 px-3 py-2 rounded-xl text-left text-sm transition-colors ${
                       activeChannel?.id === ch.id
                         ? 'bg-primary text-primary-foreground font-medium'
@@ -212,15 +217,40 @@ export default function MessagesPage() {
         <div className="flex-1 flex flex-col overflow-hidden bg-white border border-border shadow-xs rounded-2xl">
           {activeChannel ? (
             <>
-              {/* Channel header */}
-              <div className="px-4 sm:px-5 py-3 bg-white border-b border-border flex items-center gap-3">
-                <button onClick={() => setShowChannelList(true)} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
-                  <Hash size={18} />
-                </button>
-                <Hash size={18} className="text-muted-foreground hidden md:block" />
-                <div>
-                  <p className="font-semibold text-foreground text-sm">{activeChannel.name}</p>
-                  <p className="text-xs text-muted-foreground">{activeChannel.description}</p>
+              {/* Channel Header + Mobile Menu Selector */}
+              <div className="bg-white border-b border-border flex flex-col">
+                {/* Mobile Quick Channel Selector Dropdown (Above Title) */}
+                <div className="md:hidden px-3 pt-2.5 pb-1 border-b border-border/50 bg-slate-50/80">
+                  <div className="relative flex items-center">
+                    <Hash size={13} className="absolute left-3 text-muted-foreground pointer-events-none" />
+                    <select
+                      value={activeChannel.id}
+                      onChange={e => {
+                        const selected = channels.find(c => c.id === e.target.value);
+                        if (selected) setActiveChannel(selected);
+                      }}
+                      className="w-full appearance-none pl-8 pr-8 py-1.5 bg-white border border-border rounded-xl text-xs font-semibold text-foreground outline-none focus:ring-1 focus:ring-primary"
+                    >
+                      {channels.map(ch => (
+                        <option key={ch.id} value={ch.id}>
+                          #{ch.name}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={14} className="absolute right-3 text-muted-foreground pointer-events-none" />
+                  </div>
+                </div>
+
+                {/* Main Channel Title */}
+                <div className="px-4 sm:px-5 py-3 flex items-center gap-3">
+                  <button onClick={() => setShowChannelList(false)} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                    <Hash size={18} />
+                  </button>
+                  <Hash size={18} className="text-muted-foreground hidden md:block" />
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">{activeChannel.name}</p>
+                    <p className="text-xs text-muted-foreground">{activeChannel.description}</p>
+                  </div>
                 </div>
               </div>
 
@@ -230,7 +260,9 @@ export default function MessagesPage() {
                   <div key={date}>
                     <div className="flex items-center gap-3 my-3">
                       <div className="flex-1 h-px bg-border" />
-                      <span className="text-[10px] text-muted-foreground font-medium px-2.5 py-0.5 bg-muted/40 rounded-full border border-border">{date}</span>
+                      <span className="text-[10px] text-muted-foreground font-medium px-2.5 py-0.5 bg-muted/40 rounded-full border border-border">
+                        {date}
+                      </span>
                       <div className="flex-1 h-px bg-border" />
                     </div>
                     <div className="space-y-3">
@@ -253,15 +285,19 @@ export default function MessagesPage() {
                             <div className={`max-w-md ${isOwn ? 'items-end' : 'items-start'} flex flex-col`}>
                               {showHeader && (
                                 <div className={`flex items-baseline gap-2 mb-0.5 ${isOwn ? 'flex-row-reverse' : ''}`}>
-                                  <span className="text-xs font-semibold text-foreground">{isOwn ? 'You' : (sender?.full_name || 'Unknown')}</span>
+                                  <span className="text-xs font-semibold text-foreground">
+                                    {isOwn ? 'You' : sender?.full_name || 'Unknown'}
+                                  </span>
                                   <span className="text-[10px] text-muted-foreground">{formatTime(msg.created_at)}</span>
                                 </div>
                               )}
-                              <div className={`px-3.5 py-2 rounded-2xl text-sm ${
-                                isOwn
-                                  ? 'bg-primary text-primary-foreground rounded-tr-xs shadow-xs'
-                                  : `bg-slate-50 border border-border rounded-tl-xs ${msgTypeColors[msg.message_type]}`
-                              }`}>
+                              <div
+                                className={`px-3.5 py-2 rounded-2xl text-sm ${
+                                  isOwn
+                                    ? 'bg-primary text-primary-foreground rounded-tr-xs shadow-xs'
+                                    : `bg-slate-50 border border-border rounded-tl-xs ${msgTypeColors[msg.message_type]}`
+                                }`}
+                              >
                                 {msg.message_type === 'escalation' && !isOwn && (
                                   <div className="flex items-center gap-1.5 mb-1">
                                     <AlertTriangle size={12} className="text-red-500" />
@@ -295,10 +331,16 @@ export default function MessagesPage() {
               {/* Message Input */}
               <div className="px-4 sm:px-5 py-3 bg-white border-t border-border">
                 {msgType !== 'text' && (
-                  <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl mb-2 text-xs font-semibold ${msgType === 'escalation' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                  <div
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-xl mb-2 text-xs font-semibold ${
+                      msgType === 'escalation' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+                    }`}
+                  >
                     <AlertTriangle size={12} />
                     <span>{msgType === 'escalation' ? 'Escalation message' : 'Report message'}</span>
-                    <button onClick={() => setMsgType('text')} className="ml-auto"><X size={12} /></button>
+                    <button onClick={() => setMsgType('text')} className="ml-auto">
+                      <X size={12} />
+                    </button>
                   </div>
                 )}
                 <div className="flex items-end gap-2">
@@ -306,14 +348,18 @@ export default function MessagesPage() {
                     <button
                       onClick={() => setMsgType(msgType === 'report' ? 'text' : 'report')}
                       title="Send as report"
-                      className={`p-2 rounded-xl transition-colors text-xs font-bold ${msgType === 'report' ? 'bg-blue-100 text-blue-600' : 'hover:bg-muted text-muted-foreground'}`}
+                      className={`p-2 rounded-xl transition-colors text-xs font-bold ${
+                        msgType === 'report' ? 'bg-blue-100 text-blue-600' : 'hover:bg-muted text-muted-foreground'
+                      }`}
                     >
                       R
                     </button>
                     <button
                       onClick={() => setMsgType(msgType === 'escalation' ? 'text' : 'escalation')}
                       title="Send as escalation"
-                      className={`p-2 rounded-xl transition-colors ${msgType === 'escalation' ? 'bg-red-100 text-red-600' : 'hover:bg-muted text-muted-foreground'}`}
+                      className={`p-2 rounded-xl transition-colors ${
+                        msgType === 'escalation' ? 'bg-red-100 text-red-600' : 'hover:bg-muted text-muted-foreground'
+                      }`}
                     >
                       <AlertTriangle size={15} />
                     </button>
@@ -321,7 +367,12 @@ export default function MessagesPage() {
                   <textarea
                     value={input}
                     onChange={e => setInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        sendMessage();
+                      }
+                    }}
                     placeholder={`Message #${activeChannel.name}...`}
                     rows={1}
                     className="flex-1 px-4 py-2.5 text-sm border border-input rounded-xl bg-muted/30 outline-none focus:ring-2 focus:ring-primary resize-none"
