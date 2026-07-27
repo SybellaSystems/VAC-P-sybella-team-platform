@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Plus, Search, Users } from 'lucide-react';
+import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Plus, Search, ShieldAlert } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import type { CredentialVault, CredentialAccessRequest } from '@/lib/database.types';
@@ -57,7 +57,6 @@ function isUUID(str: string): boolean {
   return uuidRegex.test(str);
 }
 
-// Normalize roles (handles both 'developer' and 'developers', 'hrs', 'saless', etc.)
 function normalizeRole(role: string = ''): string {
   const r = role.toLowerCase().trim();
   if (r === 'developers') return 'developer';
@@ -188,7 +187,64 @@ export default function VaultPage() {
     return isUUID(categoryId) ? 'General' : categoryId;
   }
 
-  async function togglePasswordVisibility(credId: string, encryptedValue: string) {
+  // Check if current user is authorized to decrypt & reveal the secret
+  function canDecryptCredential(cred: any): boolean {
+    if (!profile) return false;
+    const userRole = normalizeRole(profile.role);
+    
+    // Management & Admin can reveal any secret
+    if (['admin', 'director', 'manager', 'legal_counsel', 'security_officer'].includes(userRole)) {
+      return true;
+    }
+
+    // Team Gating
+    if (cred.team_id && cred.team_id !== 'all' && !userTeamIds.includes(cred.team_id)) {
+      return false;
+    }
+
+    // Explicit Approved Requests
+    const hasApprovedRequest = accessRequests.some(
+      (r) => r.credential_id === cred.id && r.status === 'approved' && new Date(r.expires_at || '') > new Date()
+    );
+    if (hasApprovedRequest) return true;
+
+    // Category / Role check
+    const categoryName = getCategoryName(cred.category_id).toLowerCase();
+    const credRequiredRole = normalizeRole(cred.required_role || 'all');
+
+    if (userRole === 'developer') {
+      return categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general') || credRequiredRole === 'developer' || credRequiredRole === 'all';
+    }
+
+    if (userRole === 'qa') {
+      return categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general') || credRequiredRole === 'qa' || credRequiredRole === 'developer' || credRequiredRole === 'all';
+    }
+
+    if (userRole === 'designer') {
+      return categoryName.includes('design') || categoryName.includes('marketing') || categoryName.includes('general') || credRequiredRole === 'designer' || credRequiredRole === 'all';
+    }
+
+    if (userRole === 'sales') {
+      return categoryName.includes('marketing') || categoryName.includes('internal') || categoryName.includes('general') || credRequiredRole === 'sales' || credRequiredRole === 'all';
+    }
+
+    if (userRole === 'hr') {
+      return categoryName.includes('hr') || categoryName.includes('people') || categoryName.includes('internal') || categoryName.includes('general') || credRequiredRole === 'hr' || credRequiredRole === 'all';
+    }
+
+    if (cred.access_level === 'public') return true;
+    return credRequiredRole === 'all' || credRequiredRole === userRole;
+  }
+
+  async function togglePasswordVisibility(cred: any) {
+    if (!canDecryptCredential(cred)) {
+      toast.error('Role Restricted: You do not have permission to reveal this secret key');
+      return;
+    }
+
+    const credId = cred.id;
+    const encryptedValue = cred.password_encrypted;
+
     if (visiblePasswords[credId]) {
       setVisiblePasswords((prev) => ({ ...prev, [credId]: false }));
       return;
@@ -226,72 +282,6 @@ export default function VaultPage() {
       console.error('Decryption error:', err);
       toast.error('Decryption failed or access denied');
     }
-  }
-
-  function canViewCredential(cred: any): boolean {
-    if (!profile) return false;
-    const userRole = normalizeRole(profile.role);
-    
-    // Executive & Administrative Roles have full access
-    if (['admin', 'director', 'manager', 'legal_counsel', 'security_officer'].includes(userRole)) {
-      return true;
-    }
-
-    // Check Team Gating (if assigned to a specific team)
-    if (cred.team_id && cred.team_id !== 'all' && !userTeamIds.includes(cred.team_id)) {
-      return false;
-    }
-
-    // Check Explicit Access Request Approvals
-    const hasApprovedRequest = accessRequests.some(
-      (r) => r.credential_id === cred.id && r.status === 'approved' && new Date(r.expires_at || '') > new Date()
-    );
-    if (hasApprovedRequest) return true;
-
-    // Resolve raw UUID category ID to name
-    const categoryName = getCategoryName(cred.category_id).toLowerCase();
-    const credRequiredRole = normalizeRole(cred.required_role || 'all');
-
-    // DEVELOPER ACCESS
-    if (userRole === 'developer') {
-      const isDevCategory = categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general');
-      const isDevRoleReq = credRequiredRole === 'all' || credRequiredRole === 'developer';
-      return isDevCategory || isDevRoleReq;
-    }
-
-    // QA ACCESS
-    if (userRole === 'qa') {
-      const isQACategory = categoryName.includes('code') || categoryName.includes('host') || categoryName.includes('general');
-      const isQARoleReq = credRequiredRole === 'all' || credRequiredRole === 'qa' || credRequiredRole === 'developer';
-      return isQACategory || isQARoleReq;
-    }
-
-    // DESIGNER ACCESS
-    if (userRole === 'designer') {
-      const isDesignCategory = categoryName.includes('design') || categoryName.includes('marketing') || categoryName.includes('general');
-      const isDesignRoleReq = credRequiredRole === 'all' || credRequiredRole === 'designer';
-      return isDesignCategory || isDesignRoleReq;
-    }
-
-    // SALES ACCESS
-    if (userRole === 'sales') {
-      const isSalesCategory = categoryName.includes('marketing') || categoryName.includes('internal') || categoryName.includes('general');
-      const isSalesRoleReq = credRequiredRole === 'all' || credRequiredRole === 'sales';
-      return isSalesCategory || isSalesRoleReq;
-    }
-
-    // HR ACCESS
-    if (userRole === 'hr') {
-      const isHRCategory = categoryName.includes('hr') || categoryName.includes('people') || categoryName.includes('internal') || categoryName.includes('general');
-      const isHRRoleReq = credRequiredRole === 'all' || credRequiredRole === 'hr';
-      return isHRCategory || isHRRoleReq;
-    }
-
-    // Default Fallback Checks
-    if (cred.access_level === 'public') return true;
-    if (credRequiredRole === 'all' || credRequiredRole === userRole) return true;
-
-    return false;
   }
 
   function copyToClipboard(text: string, id: string) {
@@ -364,20 +354,20 @@ export default function VaultPage() {
           <TabsContent value={activeTab} className="mt-4">
             <div className="grid gap-4">
               {filteredCredentials.map((cred) => {
-                const canView = canViewCredential(cred);
+                const canDecrypt = canDecryptCredential(cred);
                 const assignedTeam = teams.find((t) => t.id === (cred as any).team_id);
                 const categoryLabel = getCategoryName(cred.category_id);
 
                 return (
-                  <Card key={cred.id} className={!canView ? 'opacity-60' : ''}>
+                  <Card key={cred.id}>
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between">
                         <div className="flex items-start gap-4">
-                          <div className={`p-3 rounded-lg ${canView ? 'bg-blue-100' : 'bg-slate-100'}`}>
-                            {canView ? (
+                          <div className={`p-3 rounded-lg ${canDecrypt ? 'bg-blue-100' : 'bg-amber-50'}`}>
+                            {canDecrypt ? (
                               <Unlock className="h-6 w-6 text-blue-600" />
                             ) : (
-                              <Lock className="h-6 w-6 text-slate-400" />
+                              <Lock className="h-6 w-6 text-amber-600" />
                             )}
                           </div>
                           <div>
@@ -386,58 +376,58 @@ export default function VaultPage() {
                             <div className="flex items-center gap-2 mt-2 flex-wrap">
                               <Badge variant="outline">{categoryLabel}</Badge>
                               <Badge variant="secondary">{cred.required_role || 'all'}</Badge>
-                              {assignedTeam && (
-                                <Badge variant="default" className="flex items-center gap-1">
-                                  <Users className="h-3 w-3" /> {assignedTeam.name}
-                                </Badge>
-                              )}
                             </div>
                           </div>
                         </div>
 
-                        {canView && (
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => togglePasswordVisibility(cred.id, cred.password_encrypted)}
-                            >
-                              {visiblePasswords[cred.id] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() =>
-                                copyToClipboard(
-                                  decryptedPasswords[cred.id] || cred.username,
-                                  cred.id
-                                )
-                              }
-                            >
-                              {copiedId === cred.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                            </Button>
-                          </div>
-                        )}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!canDecrypt}
+                            onClick={() => togglePasswordVisibility(cred)}
+                            title={canDecrypt ? "Toggle Secret Visibility" : "Role Restricted"}
+                          >
+                            {visiblePasswords[cred.id] ? (
+                              <EyeOff className="h-4 w-4" />
+                            ) : canDecrypt ? (
+                              <Eye className="h-4 w-4" />
+                            ) : (
+                              <ShieldAlert className="h-4 w-4 text-amber-600" />
+                            )}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={!canDecrypt}
+                            onClick={() =>
+                              copyToClipboard(
+                                decryptedPasswords[cred.id] || cred.username,
+                                cred.id
+                              )
+                            }
+                          >
+                            {copiedId === cred.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                          </Button>
+                        </div>
                       </div>
 
-                      {canView && (
-                        <div className="mt-4 pt-4 border-t space-y-2">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <Label className="text-slate-500 text-xs">Username / Access Key</Label>
-                              <p className="font-mono text-sm">{cred.username || '—'}</p>
-                            </div>
-                            <div>
-                              <Label className="text-slate-500 text-xs">Password / Secret</Label>
-                              <p className="font-mono text-sm">
-                                {visiblePasswords[cred.id]
-                                  ? decryptedPasswords[cred.id]
-                                  : '••••••••••••••••'}
-                              </p>
-                            </div>
+                      <div className="mt-4 pt-4 border-t space-y-2">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <Label className="text-slate-500 text-xs">Username / Access Key</Label>
+                            <p className="font-mono text-sm">{cred.username || '—'}</p>
+                          </div>
+                          <div>
+                            <Label className="text-slate-500 text-xs">Password / Secret</Label>
+                            <p className="font-mono text-sm">
+                              {visiblePasswords[cred.id]
+                                ? decryptedPasswords[cred.id]
+                                : '••••••••••••••••'}
+                            </p>
                           </div>
                         </div>
-                      )}
+                      </div>
                     </CardContent>
                   </Card>
                 );
