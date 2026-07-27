@@ -31,11 +31,11 @@ type ProficiencyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 
 interface SkillsMatrixEntry {
   id: string;
-  profile_id: string;
+  member_id: string;
   skill_name: string;
   proficiency: ProficiencyLevel;
   created_at: string;
-  profile?: { id: string; full_name: string; department: string | null; role: string | null } | null;
+  member?: { id: string; full_name: string; department: string | null; role: string | null } | null;
 }
 
 interface Profile {
@@ -66,7 +66,7 @@ export default function SkillsPage() {
   const [filterSkill, setFilterSkill] = useState('all');
 
   const [skillForm, setSkillForm] = useState({
-    profile_id: '',
+    member_id: '',
     skill_name: '',
     proficiency: 'beginner' as ProficiencyLevel,
   });
@@ -84,7 +84,15 @@ export default function SkillsPage() {
     try {
       const { data, error } = await supabase
         .from('skills_matrix')
-        .select('*, profile:profiles!skills_matrix_profile_id_fkey(id, full_name, department, role)')
+        .select(`
+          *,
+          member:profiles!skills_matrix_member_id_fkey(
+            id,
+            full_name,
+            role,
+            department
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -112,14 +120,14 @@ export default function SkillsPage() {
 
   function openCreateDialog() {
     setEditingEntry(null);
-    setSkillForm({ profile_id: '', skill_name: '', proficiency: 'beginner' });
+    setSkillForm({ member_id: '', skill_name: '', proficiency: 'beginner' });
     setShowDialog(true);
   }
 
   function openEditDialog(entry: SkillsMatrixEntry) {
     setEditingEntry(entry);
     setSkillForm({
-      profile_id: entry.profile_id,
+      member_id: entry.member_id,
       skill_name: entry.skill_name,
       proficiency: entry.proficiency,
     });
@@ -127,7 +135,7 @@ export default function SkillsPage() {
   }
 
   async function handleSaveSkill() {
-    if (!skillForm.profile_id) {
+    if (!skillForm.member_id) {
       toast.error('Please select a team member');
       return;
     }
@@ -141,7 +149,7 @@ export default function SkillsPage() {
         const { error } = await supabase
           .from('skills_matrix')
           .update({
-            profile_id: skillForm.profile_id,
+            member_id: skillForm.member_id,
             skill_name: skillForm.skill_name.trim(),
             proficiency: skillForm.proficiency,
           })
@@ -150,7 +158,7 @@ export default function SkillsPage() {
         toast.success('Skill updated');
       } else {
         const { error } = await supabase.from('skills_matrix').insert({
-          profile_id: skillForm.profile_id,
+          member_id: skillForm.member_id,
           skill_name: skillForm.skill_name.trim(),
           proficiency: skillForm.proficiency,
         });
@@ -209,7 +217,7 @@ export default function SkillsPage() {
       grid[p.id] = {};
       filteredSkillNames.forEach((skillName) => {
         grid[p.id][skillName] =
-          skills.find((s) => s.profile_id === p.id && s.skill_name === skillName) || null;
+          skills.find((s) => s.member_id === p.id && s.skill_name === skillName) || null;
       });
     });
 
@@ -220,7 +228,7 @@ export default function SkillsPage() {
     const expertCount = skills.filter((s) => s.proficiency === 'expert').length;
     const advancedCount = skills.filter((s) => s.proficiency === 'advanced').length;
     const uniqueSkills = allSkillNames.length;
-    const coveredMembers = new Set(skills.map((s) => s.profile_id)).size;
+    const coveredMembers = new Set(skills.map((s) => s.member_id)).size;
     return { total: skills.length, expert: expertCount, advanced: advancedCount, uniqueSkills, coveredMembers };
   }, [skills, allSkillNames]);
 
@@ -468,7 +476,7 @@ export default function SkillsPage() {
                     </thead>
                     <tbody>
                       {filteredProfiles.map((p) => {
-                        const memberSkills = skills.filter((s) => s.profile_id === p.id);
+                        const memberSkills = skills.filter((s) => s.member_id === p.id);
                         const avgProficiency =
                           memberSkills.length > 0
                             ? memberSkills.reduce((sum, s) => sum + proficiencyConfig[s.proficiency].value, 0) /
@@ -573,8 +581,8 @@ export default function SkillsPage() {
             <div>
               <Label>Team Member</Label>
               <Select
-                value={skillForm.profile_id}
-                onValueChange={(v) => setSkillForm({ ...skillForm, profile_id: v })}
+                value={skillForm.member_id}
+                onValueChange={(v) => setSkillForm({ ...skillForm, member_id: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select member" />
