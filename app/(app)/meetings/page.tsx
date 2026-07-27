@@ -147,9 +147,16 @@ export default function MeetingsPage() {
     setError(null);
     try {
       const { data, error } = await supabase
-        .from('meetings')
-        .select('*, project:projects!meetings_project_id_fkey(id,name), creator:profiles!meetings_created_by_fkey(full_name), attendees:meeting_attendees(*, profile:profiles!meeting_attendees_user_id_fkey(full_name,role)), action_items:meeting_action_items(*, assignee:profiles!meeting_action_items_assignee_id_fkey(full_name))')
-        .order('start_time', { ascending: false });
+.from('meetings')
+.select(`
+    *,
+    profiles(
+        id,
+        full_name,
+        role,
+        department
+    )
+`);
 
       if (error) throw error;
       setMeetings((data as Meeting[]) || []);
