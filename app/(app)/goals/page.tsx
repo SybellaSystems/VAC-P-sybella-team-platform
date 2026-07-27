@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -26,10 +26,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Target, Plus, TrendingUp, Building2, Users, User, Calendar, ChevronDown, ChevronRight, KeyRound, Trash2, CircleAlert as AlertCircle, CircleCheck as CheckCircle2 } from 'lucide-react';
+import {
+  Target,
+  Plus,
+  Building2,
+  Users,
+  User,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  KeyRound,
+  Trash2,
+  CircleAlert as AlertCircle,
+  CircleCheck as CheckCircle2,
+  AlertTriangle,
+  Clock,
+  CheckCircle,
+  PauseCircle,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 type ObjectiveLevel = 'company' | 'department' | 'team' | 'individual';
+type DBObjectiveStatus = 'active' | 'completed' | 'paused' | 'cancelled';
 
 interface Objective {
   id: string;
@@ -39,7 +58,7 @@ interface Objective {
   quarter: string;
   year: number;
   owner_id: string | null;
-  status: string;
+  status: DBObjectiveStatus;
   created_at: string;
   owner?: { full_name: string } | null;
   key_results?: KeyResult[];
@@ -62,11 +81,11 @@ const levelConfig: Record<ObjectiveLevel, { label: string; icon: typeof Building
   individual: { label: 'Individual', icon: User, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-800' },
 };
 
-const statusConfig: Record<string, { label: string; badge: string }> = {
-  on_track: { label: 'On Track', badge: 'bg-emerald-100 text-emerald-800' },
-  at_risk: { label: 'At Risk', badge: 'bg-amber-100 text-amber-800' },
-  behind: { label: 'Behind', badge: 'bg-red-100 text-red-800' },
-  completed: { label: 'Completed', badge: 'bg-blue-100 text-blue-800' },
+const dbStatusConfig: Record<DBObjectiveStatus, { label: string; badge: string; icon: typeof CheckCircle }> = {
+  active: { label: 'Active', badge: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
+  completed: { label: 'Completed', badge: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
+  paused: { label: 'Paused', badge: 'bg-amber-100 text-amber-800', icon: PauseCircle },
+  cancelled: { label: 'Cancelled', badge: 'bg-slate-200 text-slate-700', icon: XCircle },
 };
 
 function calcProgress(krs: KeyResult[]): number {
@@ -76,6 +95,16 @@ function calcProgress(krs: KeyResult[]): number {
     return sum + pct;
   }, 0);
   return Math.round(total / krs.length);
+}
+
+function getHealthStatus(progress: number, dbStatus: DBObjectiveStatus) {
+  if (dbStatus === 'completed') return { label: 'Completed', badge: 'bg-blue-100 text-blue-800' };
+  if (dbStatus === 'paused') return { label: 'Paused', badge: 'bg-amber-100 text-amber-800' };
+  if (dbStatus === 'cancelled') return { label: 'Cancelled', badge: 'bg-slate-200 text-slate-700' };
+
+  if (progress >= 70) return { label: 'On Track', badge: 'bg-emerald-100 text-emerald-800' };
+  if (progress >= 40) return { label: 'At Risk', badge: 'bg-amber-100 text-amber-800' };
+  return { label: 'Behind', badge: 'bg-red-100 text-red-800' };
 }
 
 function getProgressColor(pct: number): string {
@@ -97,14 +126,22 @@ export default function GoalsPage() {
   const [activeObjectiveId, setActiveObjectiveId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [newObjective, setNewObjective] = useState({
+  const [newObjective, setNewObjective] = useState<{
+    title: string;
+    description: string;
+    level: ObjectiveLevel;
+    quarter: string;
+    year: number;
+    owner_id: string;
+    status: DBObjectiveStatus;
+  }>({
     title: '',
     description: '',
-    level: 'company' as ObjectiveLevel,
+    level: 'company',
     quarter: 'Q1',
     year: new Date().getFullYear(),
     owner_id: '',
-    status: 'on_track',
+    status: 'active',
   });
 
   const [newKR, setNewKR] = useState({
@@ -145,16 +182,21 @@ export default function GoalsPage() {
     }
     setSubmitting(true);
     try {
-      const { error } = await supabase.from('objectives').insert({
+      const payload = {
         title: newObjective.title.trim(),
         description: newObjective.description.trim() || null,
         level: newObjective.level,
         quarter: newObjective.quarter,
         year: newObjective.year,
         owner_id: newObjective.owner_id || profile?.id || null,
-        status: newObjective.status,
-      });
+        status: newObjective.status, // Always strictly 'active' | 'completed' | 'paused' | 'cancelled'
+      };
+
+      console.log('Sending objective payload:', payload);
+
+      const { error } = await supabase.from('objectives').insert(payload);
       if (error) throw error;
+
       toast.success('Objective created');
       setShowObjectiveDialog(false);
       setNewObjective({
@@ -164,7 +206,7 @@ export default function GoalsPage() {
         quarter: 'Q1',
         year: new Date().getFullYear(),
         owner_id: '',
-        status: 'on_track',
+        status: 'active',
       });
       fetchObjectives();
     } catch (err: any) {
@@ -323,16 +365,16 @@ export default function GoalsPage() {
                     <Label>Status</Label>
                     <Select
                       value={newObjective.status}
-                      onValueChange={(v) => setNewObjective({ ...newObjective, status: v })}
+                      onValueChange={(v: DBObjectiveStatus) => setNewObjective({ ...newObjective, status: v })}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="on_track">On Track</SelectItem>
-                        <SelectItem value="at_risk">At Risk</SelectItem>
-                        <SelectItem value="behind">Behind</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="paused">Paused</SelectItem>
+                        <SelectItem value="cancelled">Cancelled</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -360,7 +402,9 @@ export default function GoalsPage() {
                     <Input
                       type="number"
                       value={newObjective.year}
-                      onChange={(e) => setNewObjective({ ...newObjective, year: parseInt(e.target.value) || new Date().getFullYear() })}
+                      onChange={(e) =>
+                        setNewObjective({ ...newObjective, year: parseInt(e.target.value) || new Date().getFullYear() })
+                      }
                     />
                   </div>
                   <div>
@@ -481,7 +525,9 @@ export default function GoalsPage() {
               const Icon = cfg.icon;
               const progress = calcProgress(objective.key_results || []);
               const isExpanded = expandedId === objective.id;
-              const statusCfg = statusConfig[objective.status] || statusConfig.on_track;
+              const health = getHealthStatus(progress, objective.status);
+              const dbCfg = dbStatusConfig[objective.status] || dbStatusConfig.active;
+
               return (
                 <Card key={objective.id}>
                   <CardContent className="p-4 sm:p-5">
@@ -497,7 +543,10 @@ export default function GoalsPage() {
                           <h3 className="font-semibold text-slate-900 text-sm truncate">{objective.title}</h3>
                           <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                             <Badge className={cfg.badge}>{cfg.label}</Badge>
-                            <Badge className={statusCfg.badge}>{statusCfg.label}</Badge>
+                            <Badge className={health.badge}>{health.label}</Badge>
+                            <Badge variant="outline" className="text-xs font-normal">
+                              Status: {dbCfg.label}
+                            </Badge>
                             <span className="text-xs text-slate-500 flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
                               {objective.quarter} {objective.year}
