@@ -78,7 +78,7 @@ const PEOPLE: NavSection = {
     { href: '/hr', label: 'HR hub', icon: 'HeartPulse', roles: ['hr', 'admin', 'director'] },
     { href: '/leave', label: 'Leave', icon: 'CalendarRange', roles: ALL_ROLES },
     { href: '/goals', label: 'Goals & OKRs', icon: 'Target', roles: ['admin', 'director', 'ceo', 'manager', 'hr'] },
-    { href: '/meetings', label: 'Meetings', icon: 'Calendar', roles: ['admin', 'director', 'manager', 'marketing_manager', 'sales', 'hr', 'operations'] },
+    { href: '/meetings', label: 'Meetings', icon: 'Calendar', roles: ALL_ROLES }, // ✅ FIX: Updated to ALL_ROLES
     { href: '/skills', label: 'Skills Matrix', icon: 'Award', roles: ['admin', 'director', 'ceo', 'hr'] },
     { href: '/recognition', label: 'Recognition', icon: 'Trophy', roles: ALL_ROLES },
     { href: '/shares', label: 'Shares', icon: 'PieChart', roles: ['admin', 'director', 'finance', 'manager', 'developer', 'designer', 'qa', 'sales', 'hr', 'legal_counsel', 'marketing_manager'] },
