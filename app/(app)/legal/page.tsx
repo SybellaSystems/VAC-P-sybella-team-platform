@@ -158,7 +158,7 @@ export default function LegalPage() {
   const [matterForm, setMatterForm] = useState<Partial<LegalMatter>>({});
   const [savingMatter, setSavingMatter] = useState(false);
 
-  const canManage = ['admin', 'director', 'manager', 'legal'].includes(
+  const canManage = ['admin', 'director', 'manager', 'legal_counsel'].includes(
     profile?.role || ''
   );
 
