@@ -304,7 +304,14 @@ export function Step4Financial({ data, update }: StepProps) {
 
   const costKeys = Object.keys(b.estimated_costs);
   const totalCost = Object.values(b.estimated_costs).reduce((s, v) => s + (Number(v) || 0), 0);
-  const netPrice = b.customer_price - b.discount + b.taxes;
+  const customerPrice = Number(b.customer_price) || 0;
+const discountPercent = Number(b.discount) || 0;
+const taxes = Number(b.taxes) || 0;
+
+// Calculates discount amount as a percentage of customer price
+const discountAmount = customerPrice * (discountPercent / 100);
+const netPrice = customerPrice - discountAmount + taxes;
+
   const grossProfit = netPrice - totalCost;
   const margin = netPrice > 0 ? (grossProfit / netPrice) * 100 : 0;
 

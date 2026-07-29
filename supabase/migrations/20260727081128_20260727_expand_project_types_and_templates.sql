@@ -45,7 +45,7 @@ ALTER TABLE projects
       'branding_design','sales_initiative','customer_support_impl','hr_project',
       'recruitment','legal_compliance','finance_accounting','procurement',
       'internal_ops','rd','training_program','business_consulting',
-      'event_management','construction','government','community_initiative',
+      'event_management','government','community_initiative',
       'product_dev','other'
     )
   );
