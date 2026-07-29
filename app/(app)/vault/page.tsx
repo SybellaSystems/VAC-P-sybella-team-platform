@@ -41,7 +41,8 @@ type CategoryOption = {
   name: string;
 };
 
-// Web Crypto Helpers
+// --- Web Crypto & Base64 Helpers ---
+
 async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -65,6 +66,29 @@ async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   );
 }
 
+// Convert Uint8Array to Base64 safely in chunks to prevent stack overflow
+function bytesToBase64(bytes: Uint8Array): string {
+  let binString = '';
+  const chunkSize = 0x8000; // 32KB chunks
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binString += String.fromCharCode.apply(
+      null,
+      bytes.subarray(i, i + chunkSize) as unknown as number[]
+    );
+  }
+  return btoa(binString);
+}
+
+// Convert Base64 back to Uint8Array safely
+function base64ToBytes(base64: string): Uint8Array {
+  const binString = atob(base64);
+  const bytes = new Uint8Array(binString.length);
+  for (let i = 0; i < binString.length; i++) {
+    bytes[i] = binString.charCodeAt(i);
+  }
+  return bytes;
+}
+
 async function encryptSecret(plainText: string): Promise<string> {
   const masterKey =
     process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
@@ -82,14 +106,14 @@ async function encryptSecret(plainText: string): Promise<string> {
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.length);
 
-  return btoa(String.fromCharCode(...combined));
+  return bytesToBase64(combined);
 }
 
 async function decryptSecret(cipherText: string): Promise<string> {
   const masterKey =
     process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
   const key = await getCryptoKey(masterKey);
-  const combined = Uint8Array.from(atob(cipherText), (c) => c.charCodeAt(0));
+  const combined = base64ToBytes(cipherText);
   const iv = combined.slice(0, 12);
   const data = combined.slice(12);
 
@@ -100,6 +124,8 @@ async function decryptSecret(cipherText: string): Promise<string> {
   );
   return new TextDecoder().decode(decrypted);
 }
+
+// --- Main Component ---
 
 export default function VaultPage() {
   const { user } = useAuth();
@@ -158,7 +184,7 @@ export default function VaultPage() {
     return found ? found.name : categoryId;
   }
 
-  // Allow ALL users to reveal/decrypt secrets
+  // Decrypt and reveal secret
   async function togglePasswordVisibility(cred: any) {
     const credId = cred.id;
     const encryptedValue = cred.password_encrypted;
@@ -187,7 +213,7 @@ export default function VaultPage() {
           rawPassword = data.rawPassword;
         }
       } catch {
-        // API route fallback
+        // API fallback
       }
 
       if (!rawPassword) {
@@ -210,7 +236,7 @@ export default function VaultPage() {
     toast.success('Copied to clipboard');
   }
 
-  // Create new Credential (accessible to all)
+  // Create new Credential
   async function handleCreateCredential(e: React.FormEvent) {
     e.preventDefault();
     if (!newCred.name || !newCred.password) {
@@ -288,7 +314,7 @@ export default function VaultPage() {
     <div>
       <TopBar title="Sybella Vault" subtitle="Encrypted organization credentials and secrets" />
       <div className="p-4 sm:p-6 space-y-5">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">Platform Keyring</h1>
             <p className="text-slate-600">Credential catalog viewable and editable by all users</p>
