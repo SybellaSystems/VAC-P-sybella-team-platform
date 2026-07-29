@@ -9,7 +9,29 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Label } from '@/components/ui/label';
-import { Lock, Clock as Unlock, Eye, EyeOff, Copy, Check, Search, ShieldAlert } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Clock as Unlock,
+  Eye,
+  EyeOff,
+  Copy,
+  Check,
+  Search,
+  Plus,
+} from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import type { CredentialVault } from '@/lib/database.types';
@@ -19,16 +41,7 @@ type CategoryOption = {
   name: string;
 };
 
-// Normalize role strings (handles variations like 'admins', 'marketers', etc.)
-function normalizeRole(role: string = ''): string {
-  const r = role.toLowerCase().trim();
-  if (r === 'admins') return 'admin';
-  if (r === 'ceos') return 'ceo';
-  if (r === 'marketers' || r === 'marketing') return 'marketer';
-  return r;
-}
-
-// Web Crypto Helper for Decryption
+// Web Crypto Helpers
 async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await window.crypto.subtle.importKey(
@@ -52,8 +65,29 @@ async function getCryptoKey(secretKey: string): Promise<CryptoKey> {
   );
 }
 
+async function encryptSecret(plainText: string): Promise<string> {
+  const masterKey =
+    process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
+  const key = await getCryptoKey(masterKey);
+  const iv = window.crypto.getRandomValues(new Uint8Array(12));
+  const encoded = new TextEncoder().encode(plainText);
+
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    encoded
+  );
+
+  const combined = new Uint8Array(iv.length + encrypted.byteLength);
+  combined.set(iv, 0);
+  combined.set(new Uint8Array(encrypted), iv.length);
+
+  return btoa(String.fromCharCode(...combined));
+}
+
 async function decryptSecret(cipherText: string): Promise<string> {
-  const masterKey = process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
+  const masterKey =
+    process.env.NEXT_PUBLIC_VAULT_KEY || 'sybella_default_vault_secret_key_32b';
   const key = await getCryptoKey(masterKey);
   const combined = Uint8Array.from(atob(cipherText), (c) => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
@@ -68,37 +102,46 @@ async function decryptSecret(cipherText: string): Promise<string> {
 }
 
 export default function VaultPage() {
-  const { profile } = useAuth();
+  const { user } = useAuth();
 
   const [credentials, setCredentials] = useState<CredentialVault[]>([]);
   const [categories, setCategories] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   const [decryptedPasswords, setDecryptedPasswords] = useState<Record<string, string>>({});
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Modal State for New Credential
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [newCred, setNewCred] = useState({
+    name: '',
+    platform_name: '',
+    username: '',
+    password: '',
+    category_id: '',
+  });
+
   useEffect(() => {
     fetchData();
-  }, [profile]);
+  }, []);
 
   async function fetchData() {
     setLoading(true);
     try {
       const [credsRes, categoriesRes] = await Promise.all([
-        supabase.from('credential_vault').select('*').order('created_at', { ascending: false }),
+        supabase
+          .from('credential_vault')
+          .select('*')
+          .order('created_at', { ascending: false }),
         supabase.from('credential_categories').select('id, name'),
       ]);
 
-      if (credsRes.data) {
-        setCredentials(credsRes.data);
-      }
-      
-      if (categoriesRes.data) {
-        setCategories(categoriesRes.data);
-      }
+      if (credsRes.data) setCredentials(credsRes.data);
+      if (categoriesRes.data) setCategories(categoriesRes.data);
     } catch (error) {
       console.error('Error fetching vault data:', error);
       toast.error('Failed to load credentials');
@@ -107,29 +150,16 @@ export default function VaultPage() {
     }
   }
 
-  // Helper to format category names safely
   function getCategoryName(categoryId: string | null | undefined): string {
     if (!categoryId) return 'General';
     const found = categories.find(
       (c) => c.id === categoryId || c.name.toLowerCase() === categoryId.toLowerCase()
     );
-    if (found) return found.name;
-    return categoryId;
+    return found ? found.name : categoryId;
   }
 
-  // Permission check: Eye and Decrypt are strictly available ONLY to admin, ceo, or marketer
-  function canOpenEye(): boolean {
-    if (!profile || !profile.role) return false;
-    const userRole = normalizeRole(profile.role);
-    return ['admin', 'ceo', 'marketer'].includes(userRole);
-  }
-
+  // Allow ALL users to reveal/decrypt secrets
   async function togglePasswordVisibility(cred: any) {
-    if (!canOpenEye()) {
-      toast.error('Restricted: Secrets can only be revealed by Admin, CEO, or Marketer');
-      return;
-    }
-
     const credId = cred.id;
     const encryptedValue = cred.password_encrypted;
 
@@ -157,7 +187,7 @@ export default function VaultPage() {
           rawPassword = data.rawPassword;
         }
       } catch {
-        // Fallback
+        // API route fallback
       }
 
       if (!rawPassword) {
@@ -168,7 +198,7 @@ export default function VaultPage() {
       setVisiblePasswords((prev) => ({ ...prev, [credId]: true }));
     } catch (err) {
       console.error('Decryption error:', err);
-      toast.error('Decryption failed or access denied');
+      toast.error('Decryption failed');
     }
   }
 
@@ -180,7 +210,51 @@ export default function VaultPage() {
     toast.success('Copied to clipboard');
   }
 
-  // Filter credentials for display across tabs
+  // Create new Credential (accessible to all)
+  async function handleCreateCredential(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newCred.name || !newCred.password) {
+      toast.error('Name and Password/Secret are required');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const encryptedPassword = await encryptSecret(newCred.password);
+
+      const { data, error } = await supabase
+        .from('credential_vault')
+        .insert({
+          name: newCred.name,
+          platform_name: newCred.platform_name || newCred.name,
+          username: newCred.username,
+          password_encrypted: encryptedPassword,
+          category_id: newCred.category_id || null,
+          created_by: user?.id || null,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast.success('Credential added to Vault');
+      setCredentials((prev) => [data, ...prev]);
+      setIsDialogOpen(false);
+      setNewCred({
+        name: '',
+        platform_name: '',
+        username: '',
+        password: '',
+        category_id: '',
+      });
+    } catch (error: any) {
+      console.error('Error creating credential:', error);
+      toast.error(error.message || 'Failed to save credential');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   const filteredCredentials = credentials.filter((cred) => {
     const query = searchQuery.toLowerCase();
     const credName = (cred.name || '').toLowerCase();
@@ -199,8 +273,6 @@ export default function VaultPage() {
     );
   });
 
-  const isAuthorizedToReveal = canOpenEye();
-
   if (loading) {
     return (
       <div>
@@ -216,9 +288,92 @@ export default function VaultPage() {
     <div>
       <TopBar title="Sybella Vault" subtitle="Encrypted organization credentials and secrets" />
       <div className="p-4 sm:p-6 space-y-5">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Platform Keyring</h1>
-          <p className="text-slate-600">Credential catalog viewable by all users</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Platform Keyring</h1>
+            <p className="text-slate-600">Credential catalog viewable and editable by all users</p>
+          </div>
+
+          {/* Add Credential Button & Modal */}
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button className="flex items-center gap-2">
+                <Plus className="h-4 w-4" /> Add Credential
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Add New Credential</DialogTitle>
+              </DialogHeader>
+              <form onSubmit={handleCreateCredential} className="space-y-4 mt-2">
+                <div>
+                  <Label htmlFor="name">Key / Title *</Label>
+                  <Input
+                    id="name"
+                    placeholder="e.g. AWS Production Database"
+                    value={newCred.name}
+                    onChange={(e) => setNewCred({ ...newCred, name: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="platform">Platform / Service</Label>
+                  <Input
+                    id="platform"
+                    placeholder="e.g. AWS, Stripe, Vercel"
+                    value={newCred.platform_name}
+                    onChange={(e) => setNewCred({ ...newCred, platform_name: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="category">Category</Label>
+                  <Select
+                    value={newCred.category_id}
+                    onValueChange={(val) => setNewCred({ ...newCred, category_id: val })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="username">Username / Access Key</Label>
+                  <Input
+                    id="username"
+                    placeholder="admin@sybella.com or AKIA..."
+                    value={newCred.username}
+                    onChange={(e) => setNewCred({ ...newCred, username: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="password">Password / Secret Key *</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    value={newCred.password}
+                    onChange={(e) => setNewCred({ ...newCred, password: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={isSubmitting}>
+                    {isSubmitting ? 'Encrypting & Saving...' : 'Save Credential'}
+                  </Button>
+                </div>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Search Bar */}
@@ -260,12 +415,8 @@ export default function VaultPage() {
                       <CardContent className="p-6">
                         <div className="flex items-start justify-between">
                           <div className="flex items-start gap-4">
-                            <div className={`p-3 rounded-lg ${isAuthorizedToReveal ? 'bg-blue-100' : 'bg-slate-100'}`}>
-                              {isAuthorizedToReveal ? (
-                                <Unlock className="h-6 w-6 text-blue-600" />
-                              ) : (
-                                <Lock className="h-6 w-6 text-slate-500" />
-                              )}
+                            <div className="p-3 rounded-lg bg-blue-100">
+                              <Unlock className="h-6 w-6 text-blue-600" />
                             </div>
                             <div>
                               <h3 className="font-semibold text-lg">{cred.name || 'Untitled Key'}</h3>
@@ -283,26 +434,18 @@ export default function VaultPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={!isAuthorizedToReveal}
                               onClick={() => togglePasswordVisibility(cred)}
-                              title={
-                                isAuthorizedToReveal
-                                  ? 'Toggle Secret Visibility'
-                                  : 'Requires Admin, CEO, or Marketer Role'
-                              }
+                              title="Toggle Secret Visibility"
                             >
                               {visiblePasswords[cred.id] ? (
                                 <EyeOff className="h-4 w-4" />
-                              ) : isAuthorizedToReveal ? (
-                                <Eye className="h-4 w-4" />
                               ) : (
-                                <ShieldAlert className="h-4 w-4 text-amber-600" />
+                                <Eye className="h-4 w-4" />
                               )}
                             </Button>
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled={!isAuthorizedToReveal}
                               onClick={() =>
                                 copyToClipboard(
                                   decryptedPasswords[cred.id] || cred.username,
@@ -310,7 +453,11 @@ export default function VaultPage() {
                                 )
                               }
                             >
-                              {copiedId === cred.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                              {copiedId === cred.id ? (
+                                <Check className="h-4 w-4" />
+                              ) : (
+                                <Copy className="h-4 w-4" />
+                              )}
                             </Button>
                           </div>
                         </div>
