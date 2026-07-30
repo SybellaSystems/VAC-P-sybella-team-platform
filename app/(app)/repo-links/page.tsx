@@ -31,7 +31,7 @@ import { toast } from 'sonner';
 type RepoLinkRecord = {
   id: string;
   title: string;
-  description: string;
+  description: string | null;
   url: string;
   category: string;
   created_by: string | null;
@@ -76,12 +76,20 @@ export default function RepoLinksPage() {
   }
 
   async function handleAddLink() {
-    if (!profile) return;
+    if (!profile) {
+      toast.error('You must be logged in to add a link');
+      return;
+    }
+
+    if (!newLink.title || !newLink.url) {
+      toast.error('Title and URL are required');
+      return;
+    }
 
     try {
       const { error } = await supabase.from('repo_links').insert({
         title: newLink.title,
-        description: newLink.description,
+        description: newLink.description || null,
         url: newLink.url,
         category: newLink.category,
         created_by: profile.id,
@@ -99,25 +107,35 @@ export default function RepoLinksPage() {
     }
   }
 
-  const filteredLinks = links.filter(link =>
-    link.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    link.description.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Safely handle null / undefined values during search filtering
+  const filteredLinks = links.filter((link) => {
+    const query = searchQuery.toLowerCase();
+    const titleMatch = (link.title || '').toLowerCase().includes(query);
+    const descMatch = (link.description || '').toLowerCase().includes(query);
+    return titleMatch || descMatch;
+  });
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'repository': return <Github className="h-5 w-5" />;
-      case 'drive': return <FolderOpen className="h-5 w-5" />;
-      default: return <FileText className="h-5 w-5" />;
+      case 'repository':
+        return <Github className="h-5 w-5" />;
+      case 'drive':
+        return <FolderOpen className="h-5 w-5" />;
+      default:
+        return <FileText className="h-5 w-5" />;
     }
   };
 
   const getCategoryColor = (category: string) => {
     switch (category) {
-      case 'repository': return 'bg-purple-100 text-purple-800';
-      case 'drive': return 'bg-blue-100 text-blue-800';
-      case 'design': return 'bg-pink-100 text-pink-800';
-      default: return 'bg-slate-100 text-slate-800';
+      case 'repository':
+        return 'bg-purple-100 text-purple-800';
+      case 'drive':
+        return 'bg-blue-100 text-blue-800';
+      case 'design':
+        return 'bg-pink-100 text-pink-800';
+      default:
+        return 'bg-slate-100 text-slate-800';
     }
   };
 
@@ -136,102 +154,120 @@ export default function RepoLinksPage() {
     <div>
       <TopBar title="Repository Links" subtitle="External documents, repositories, and resources" />
       <div className="p-4 sm:p-6 space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Repository Links</h1>
-          <p className="text-slate-600">External documents, repositories, and resources</p>
-        </div>
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Link
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add New Link</DialogTitle>
-              <DialogDescription>Add a link to an external resource</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Title</label>
-                <Input value={newLink.title} onChange={e => setNewLink({ ...newLink, title: e.target.value })} placeholder="Link title" />
-              </div>
-              <div>
-                <label className="text-sm font-medium">URL</label>
-                <Input value={newLink.url} onChange={e => setNewLink({ ...newLink, url: e.target.value })} placeholder="https://..." />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Category</label>
-                <Select value={newLink.category} onValueChange={v => setNewLink({ ...newLink, category: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="document">Document</SelectItem>
-                    <SelectItem value="repository">Repository</SelectItem>
-                    <SelectItem value="drive">Google Drive</SelectItem>
-                    <SelectItem value="design">Design</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Description</label>
-                <Textarea value={newLink.description} onChange={e => setNewLink({ ...newLink, description: e.target.value })} placeholder="Brief description" rows={3} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
-              <Button onClick={handleAddLink}>Add Link</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      <div className="relative max-w-md w-full">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-        <Input
-          placeholder="Search links..."
-          value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {filteredLinks.length === 0 ? (
-          <Card className="col-span-full">
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Link2 className="h-12 w-12 text-slate-300 mb-4" />
-              <p className="text-slate-500">No links found</p>
-            </CardContent>
-          </Card>
-        ) : (
-          filteredLinks.map(link => (
-            <Card key={link.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="p-2 rounded-lg bg-slate-100">
-                    {getCategoryIcon(link.category)}
-                  </div>
-                  <a href={link.url} target="_blank" rel="noopener noreferrer">
-                    <Button variant="ghost" size="sm">
-                      <ExternalLink className="h-4 w-4" />
-                    </Button>
-                  </a>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Repository Links</h1>
+            <p className="text-slate-600">External documents, repositories, and resources</p>
+          </div>
+          <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Link
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add New Link</DialogTitle>
+                <DialogDescription>Add a link to an external resource</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-sm font-medium">Title *</label>
+                  <Input
+                    value={newLink.title}
+                    onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
+                    placeholder="Link title"
+                  />
                 </div>
-                <CardTitle className="text-lg">{link.title}</CardTitle>
-                <CardDescription>{link.description || 'No description'}</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Badge className={getCategoryColor(link.category)}>{link.category}</Badge>
+                <div>
+                  <label className="text-sm font-medium">URL *</label>
+                  <Input
+                    value={newLink.url}
+                    onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
+                    placeholder="https://..."
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Category</label>
+                  <Select
+                    value={newLink.category}
+                    onValueChange={(v) => setNewLink({ ...newLink, category: v })}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="document">Document</SelectItem>
+                      <SelectItem value="repository">Repository</SelectItem>
+                      <SelectItem value="drive">Google Drive</SelectItem>
+                      <SelectItem value="design">Design</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Description</label>
+                  <Textarea
+                    value={newLink.description}
+                    onChange={(e) => setNewLink({ ...newLink, description: e.target.value })}
+                    placeholder="Brief description"
+                    rows={3}
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowAddDialog(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={handleAddLink}>Add Link</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="relative max-w-md w-full">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+          <Input
+            placeholder="Search links..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredLinks.length === 0 ? (
+            <Card className="col-span-full">
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Link2 className="h-12 w-12 text-slate-300 mb-4" />
+                <p className="text-slate-500">No links found</p>
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ) : (
+            filteredLinks.map((link) => (
+              <Card key={link.id} className="hover:shadow-md transition-shadow">
+                <CardHeader>
+                  <div className="flex items-start justify-between">
+                    <div className="p-2 rounded-lg bg-slate-100">
+                      {getCategoryIcon(link.category)}
+                    </div>
+                    <a href={link.url} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="sm">
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    </a>
+                  </div>
+                  <CardTitle className="text-lg">{link.title}</CardTitle>
+                  <CardDescription>{link.description || 'No description'}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Badge className={getCategoryColor(link.category)}>{link.category}</Badge>
+                </CardContent>
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
