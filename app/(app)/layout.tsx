@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { CheckInPrompt } from '@/components/layout/CheckInPrompt';
 import { CelebrationOverlay } from '@/components/layout/CelebrationOverlay';
+import { WeeklyReportGuard } from '@/components/layout/WeeklyReportGuard';
 import { Menu } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

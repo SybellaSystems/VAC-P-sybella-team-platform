@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { parseCSV, validateImportData, mapAndImportColumns, createCustomFieldsFromHeaders } from '@/lib/project-import-export';
-import { Upload, AlertCircle, CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Upload, CircleAlert as AlertCircle, CircleCheck as CheckCircle, ChevronRight, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 

@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/lib/supabase';
 import type { Profile, ExtendedTask } from '@/lib/database.types';
-import { MessageCircle, AlertCircle, CheckCircle } from 'lucide-react';
+import { MessageCircle, CircleAlert as AlertCircle, CircleCheck as CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export interface TaskAssignmentFormProps {

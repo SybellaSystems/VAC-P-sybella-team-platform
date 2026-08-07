@@ -45,9 +45,9 @@ const statusColors: Record<string, string> = {
   cancelled: 'bg-red-100 text-red-600',
 };
 
-async function logActivity(projectId: string, action: string, description: string, actorId: string | null, metadata?: Record<string, unknown>) {
+async function logActivity(projectId: string, action: string, description: string, actorId: string | null | undefined, metadata?: Record<string, unknown>) {
   await supabase.from('project_activity_log').insert({
-    project_id: projectId, action, description, actor_id: actorId, metadata: metadata || {},
+    project_id: projectId, action, description, actor_id: actorId ?? null, metadata: metadata || {},
   });
 }
 

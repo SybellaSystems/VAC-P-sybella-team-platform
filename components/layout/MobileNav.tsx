@@ -8,32 +8,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { navSectionsForRole, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
-import {
-  LayoutDashboard,
-  Briefcase,
-  CheckSquare,
-  FolderKanban,
-  LayoutGrid,
-  Building2,
-  TrendingUp,
-  MessageSquare,
-  ClipboardList,
-  DollarSign,
-  Landmark,
-  ChartBar as BarChart3,
-  Users,
-  HeartPulse,
-  Scale,
-  Megaphone,
-  BookOpen,
-  Link2,
-  CalendarRange,
-  Wallet,
-  PieChart,
-  ScrollText,
-  Shield,
-  Bell,
-} from 'lucide-react';
+import { LayoutDashboard, Briefcase, SquareCheck as CheckSquare, FolderKanban, LayoutGrid, Building2, TrendingUp, MessageSquare, ClipboardList, DollarSign, Landmark, ChartBar as BarChart3, Users, HeartPulse, Scale, Megaphone, BookOpen, Link2, CalendarRange, Wallet, ChartPie as PieChart, ScrollText, Shield, Bell } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 
 const ICON_MAP: Record<string, React.ElementType> = {

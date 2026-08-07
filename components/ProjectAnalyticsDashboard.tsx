@@ -16,7 +16,7 @@ import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, 
   Tooltip, Legend, ResponsiveContainer, Area, AreaChart 
 } from 'recharts';
-import { TrendingUp, TrendingDown, AlertCircle, CheckCircle2, Clock, Users } from 'lucide-react';
+import { TrendingUp, TrendingDown, CircleAlert as AlertCircle, CircleCheck as CheckCircle2, Clock, Users } from 'lucide-react';
 import type { ProjectAnalytic } from '@/lib/database.types';
 
 interface ProjectAnalyticsDashboardProps {

@@ -30,17 +30,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import {
-  PieChart as PieChartIcon,
-  TrendingUp,
-  Users,
-  Building2,
-  Coins,
-  ShieldAlert,
-  UserPlus,
-  Layers,
-  History,
-} from 'lucide-react';
+import { ChartPie as PieChartIcon, TrendingUp, Users, Building2, Coins, ShieldAlert, UserPlus, Layers, History } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { canManageShares } from '@/lib/rbac';
