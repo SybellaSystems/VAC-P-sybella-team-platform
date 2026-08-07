@@ -26,7 +26,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Target, Plus, Building2, Users, User, Calendar, ChevronDown, ChevronRight, KeyRound, Trash2, CircleAlert as AlertCircle, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, CircleCheck as CheckCircle, CirclePause as PauseCircle, Circle as XCircle } from 'lucide-react';
+import { Target, Plus, Building2, Users, User, Calendar, ChevronDown, ChevronRight, KeyRound, Trash2, CircleAlert as AlertCircle, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, CirclePause as PauseCircle, Circle as XCircle } from 'lucide-react';
+
+const CheckCircle = CheckCircle2;
 import { toast } from 'sonner';
 
 type ObjectiveLevel = 'company' | 'department' | 'team' | 'individual';

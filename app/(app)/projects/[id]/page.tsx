@@ -1,54 +1,87 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
-import type { Profile, Project, Customer } from '@/lib/database.types';
-import { ArrowLeft, Briefcase, FileText, Building2, DollarSign, Wallet, Users, Calendar, ListTree, FolderOpen, TriangleAlert, MessageSquare, Activity, ChartBar as BarChart3, Archive, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Plus, Trash2, CreditCard as Edit2, X, GitBranch, GitCommitVertical as GitCommit, ShieldAlert, Network, Download, Check, Loader as Loader2, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  ArrowLeft, Briefcase, FileText, Building2, DollarSign, Wallet, Users, Calendar,
+  ListTree, FolderOpen, TriangleAlert, MessageSquare, Activity, ChartBar as BarChart3,
+  Archive, CircleCheck as CheckCircle, CircleAlert as AlertCircle, Plus, Pencil, Trash2,
+  X, GitBranch, ShieldAlert, Network, Download, Check, Loader as Loader2, Send,
+} from 'lucide-react';
 
-interface Milestone { id: string; name: string; target_date: string | null; status: string; }
-interface Phase { id: string; name: string; description: string; status: string; progress: number; }
-interface TaskRow { id: string; title: string; description: string; status: string; priority: string; assigned_to: string | null; estimated_hours: number | null; }
-interface RiskRow { id: string; risk: string; probability: string; impact: string; mitigation: string; status: string; }
-interface DependencyRow { id: string; description: string; dependency_type: string; status: string; due_date: string | null; }
-interface DocumentRow { id: string; name: string; document_type: string; folder: string; url: string; }
-interface ChecklistRow { id: string; item: string; is_done: boolean; }
-interface ActivityRow { id: string; action: string; description: string; created_at: string; actor?: { full_name: string }; }
-interface ChangeRequestRow { id: string; title: string; change_type: string; status: string; description: string; impact_analysis: string; }
-interface AssignmentRow { id: string; member_id: string; role_in_project: string; can_edit_tasks: boolean; can_manage_members: boolean; member?: { full_name: string; role: string }; }
-interface BudgetProposalRow { id: string; title: string; description: string; amount: number; currency: string; category: string; status: string; priority: string; current_step: number; total_steps: number; }
+interface ProjectRow {
+  id: string; name: string; description: string; status: string; priority: string;
+  budget: number; spent: number; progress: number; start_date: string | null;
+  end_date: string | null; customer_id: string | null; created_by: string | null;
+  project_code?: string; project_type?: string; department?: string;
+}
+
+interface TaskRow {
+  id: string; title: string; description: string | null; status: string;
+  priority: string; assigned_to: string | null; estimated_hours: number | null;
+  due_date: string | null; version_id: string | null;
+}
+
+interface VersionRow {
+  id: string; version_label: string; description: string | null; status: string;
+  progress: number | null; is_active: boolean;
+}
+
+interface MemberRow { id: string; full_name: string; role: string; }
+
+interface RiskRow {
+  id: string; risk: string; probability: string; impact: string; owner: string | null;
+  mitigation: string | null; status: string;
+}
+
+interface ActivityRow {
+  id: string; action: string; description: string | null; actor_id: string | null;
+  metadata: Record<string, unknown> | null; created_at: string;
+}
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview', icon: Briefcase },
-  { id: 'scope', label: 'Scope & Description', icon: FileText },
-  { id: 'customer', label: 'Customer Information', icon: Building2 },
-  { id: 'financial', label: 'Financial Performance', icon: DollarSign },
-  { id: 'budget', label: 'Budget Proposals', icon: Wallet },
-  { id: 'team', label: 'Team & Resources', icon: Users },
-  { id: 'timeline', label: 'Timeline & Milestones', icon: Calendar },
-  { id: 'tasks', label: 'Tasks & Progress', icon: ListTree },
-  { id: 'documents', label: 'Documents & Repository', icon: FolderOpen },
-  { id: 'risks', label: 'Risks & Issues', icon: TriangleAlert },
-  { id: 'changes', label: 'Change Requests', icon: GitCommit },
-  { id: 'communications', label: 'Communications', icon: MessageSquare },
-  { id: 'activity', label: 'Activity Log', icon: Activity },
-  { id: 'analytics', label: 'Reports & Analytics', icon: BarChart3 },
-  { id: 'archive', label: 'Archive & Close', icon: Archive },
-] as const;
+  { id: 'tasks', label: 'Tasks Board', icon: ListTree },
+  { id: 'versions', label: 'Project Versions', icon: GitBranch },
+  { id: 'team', label: 'Team & Assignments', icon: Users },
+  { id: 'risks', label: 'Risks & Issues', icon: ShieldAlert },
+  { id: 'activity', label: 'Activity Timeline', icon: Activity },
+  { id: 'documents', label: 'Documents & Links', icon: FolderOpen },
+  { id: 'settings', label: 'Project Settings', icon: Network },
+];
 
-const statusColors: Record<string, string> = {
-  planning: 'bg-blue-100 text-blue-700', active: 'bg-emerald-100 text-emerald-700',
-  on_hold: 'bg-amber-100 text-amber-700', completed: 'bg-gray-100 text-gray-600',
+const KANBAN_COLS = [
+  { key: 'todo', label: 'To Do', color: 'bg-slate-400', bg: 'bg-slate-50' },
+  { key: 'in_progress', label: 'In Progress', color: 'bg-blue-500', bg: 'bg-blue-50' },
+  { key: 'review', label: 'Review', color: 'bg-amber-500', bg: 'bg-amber-50' },
+  { key: 'done', label: 'Done', color: 'bg-emerald-500', bg: 'bg-emerald-50' },
+];
+
+const PRIORITY_BADGE: Record<string, string> = {
+  low: 'bg-emerald-100 text-emerald-700',
+  medium: 'bg-amber-100 text-amber-700',
+  high: 'bg-orange-100 text-orange-700',
+  critical: 'bg-red-100 text-red-700',
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  planning: 'bg-blue-100 text-blue-700',
+  active: 'bg-emerald-100 text-emerald-700',
+  on_hold: 'bg-amber-100 text-amber-700',
+  completed: 'bg-slate-100 text-slate-600',
   cancelled: 'bg-red-100 text-red-600',
 };
 
-async function logActivity(projectId: string, action: string, description: string, actorId: string | null | undefined, metadata?: Record<string, unknown>) {
-  await supabase.from('project_activity_log').insert({
-    project_id: projectId, action, description, actor_id: actorId ?? null, metadata: metadata || {},
-  });
+async function logActivity(projectId: string, action: string, description: string, actorId: string | null) {
+  try {
+    await supabase.from('project_activity_log').insert({
+      project_id: projectId, action, description, actor_id: actorId, metadata: {},
+    });
+  } catch { /* non-fatal */ }
 }
 
 export default function ProjectDetailPage() {
@@ -57,633 +90,1006 @@ export default function ProjectDetailPage() {
   const { profile } = useAuth();
   const projectId = params.id as string;
 
-  const [project, setProject] = useState<Project | null>(null);
-  const [customer, setCustomer] = useState<Customer | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [phases, setPhases] = useState<Phase[]>([]);
+  const [project, setProject] = useState<ProjectRow | null>(null);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [versions, setVersions] = useState<VersionRow[]>([]);
+  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [assignments, setAssignments] = useState<{ id: string; member_id: string; role_in_project: string }[]>([]);
   const [risks, setRisks] = useState<RiskRow[]>([]);
-  const [dependencies, setDependencies] = useState<DependencyRow[]>([]);
-  const [documents, setDocuments] = useState<DocumentRow[]>([]);
-  const [checklist, setChecklist] = useState<ChecklistRow[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
-  const [changeRequests, setChangeRequests] = useState<ChangeRequestRow[]>([]);
-  const [assignments, setAssignments] = useState<AssignmentRow[]>([]);
-  const [budgetProposals, setBudgetProposals] = useState<BudgetProposalRow[]>([]);
-  const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeSection, setActiveSection] = useState<string>('overview');
-  const [editing, setEditing] = useState(false);
-  const [editForm, setEditForm] = useState<Partial<Project>>({});
-  const [showCloseConfirm, setShowCloseConfirm] = useState<null | 'completed' | 'cancelled'>(null);
-  const [closing, setClosing] = useState(false);
-  const [showChangeRequest, setShowChangeRequest] = useState(false);
-  const [crForm, setCrForm] = useState({ title: '', description: '', change_type: 'scope', impact_analysis: '' });
+  const [activeSection, setActiveSection] = useState('overview');
+  const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
+
+  // Task modal state
+  const [showTaskModal, setShowTaskModal] = useState(false);
+  const [editingTask, setEditingTask] = useState<TaskRow | null>(null);
+  const [taskForm, setTaskForm] = useState({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', estimated_hours: '', due_date: '' });
+  const [savingTask, setSavingTask] = useState(false);
   const [showTaskUpdate, setShowTaskUpdate] = useState<string | null>(null);
   const [taskUpdate, setTaskUpdate] = useState('');
-  const [exporting, setExporting] = useState(false);
+
+  // Version modal state
+  const [showVersionModal, setShowVersionModal] = useState(false);
+  const [versionForm, setVersionForm] = useState({ version_label: '', description: '', status: 'planning' });
+  const [savingVersion, setSavingVersion] = useState(false);
+
+  // Risk modal state
+  const [showRiskModal, setShowRiskModal] = useState(false);
+  const [riskForm, setRiskForm] = useState({ risk: '', probability: 'medium', impact: 'medium', mitigation: '', status: 'open' });
+  const [savingRisk, setSavingRisk] = useState(false);
+
+  // Member modal state
+  const [showMemberModal, setShowMemberModal] = useState(false);
+  const [memberForm, setMemberForm] = useState({ member_id: '', role_in_project: 'member' });
+  const [savingMember, setSavingMember] = useState(false);
+
+  // Drag state
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+
+  // Edit project state
+  const [editForm, setEditForm] = useState({ name: '', description: '', status: 'planning', priority: 'medium', budget: 0, progress: 0, start_date: '', end_date: '' });
+  const [savingProject, setSavingProject] = useState(false);
 
   const canManage = ['admin', 'director', 'manager'].includes(profile?.role || '');
   const isArchived = project?.status === 'completed' || project?.status === 'cancelled';
 
-  useEffect(() => { if (projectId) loadAll(); }, [projectId]);
-
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
+    if (!projectId) return;
     setLoading(true);
-    const [{ data: proj }, { data: profs }] = await Promise.all([
-      supabase.from('projects').select('*').eq('id', projectId).maybeSingle(),
-      supabase.from('profiles').select('*').eq('is_active', true).order('full_name'),
-    ]);
-    const p = proj as Project | null;
-    setProject(p); setEditForm(p || {}); setMembers((profs as Profile[]) || []);
-    if (p?.customer_id) {
-      const { data: cust } = await supabase.from('customers').select('*').eq('id', p.customer_id).maybeSingle();
-      setCustomer(cust as Customer | null);
-    }
-    const [miles, phs, tks, rks, deps, docs, chk, act, crs, asg, bps] = await Promise.all([
-      supabase.from('project_milestones').select('*').eq('project_id', projectId).order('sort_order'),
-      supabase.from('project_phases').select('*').eq('project_id', projectId).order('sort_order'),
+    const [projRes, taskRes, verRes, memRes, asgRes, riskRes, actRes] = await Promise.all([
+      supabase.from('projects').select('*').eq('id', projectId).single(),
       supabase.from('tasks').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
-      supabase.from('project_risks').select('*').eq('project_id', projectId),
-      supabase.from('project_dependencies').select('*').eq('project_id', projectId),
-      supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
-      supabase.from('project_requirements_checklist').select('*').eq('project_id', projectId).order('sort_order'),
-      supabase.from('project_activity_log').select('*, actor:profiles!project_activity_log_actor_id_fkey(full_name)').eq('project_id', projectId).order('created_at', { ascending: false }).limit(50),
-      supabase.from('project_change_requests').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
-      supabase.from('project_assignments').select('*, member:profiles!project_assignments_member_id_fkey(full_name, role)').eq('project_id', projectId),
-      supabase.from('budget_proposals').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
+      supabase.from('project_versions').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id, full_name, role').order('full_name'),
+      supabase.from('project_assignments').select('id, member_id, role_in_project').eq('project_id', projectId),
+      supabase.from('project_risks').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
+      supabase.from('project_activity_log').select('*').eq('project_id', projectId).order('created_at', { ascending: false }).limit(50),
     ]);
-    setMilestones((miles.data as Milestone[]) || []); setPhases((phs.data as Phase[]) || []);
-    setTasks((tks.data as TaskRow[]) || []); setRisks((rks.data as RiskRow[]) || []);
-    setDependencies((deps.data as DependencyRow[]) || []); setDocuments((docs.data as DocumentRow[]) || []);
-    setChecklist((chk.data as ChecklistRow[]) || []); setActivity((act.data as ActivityRow[]) || []);
-    setChangeRequests((crs.data as ChangeRequestRow[]) || []); setAssignments((asg.data as AssignmentRow[]) || []);
-    setBudgetProposals((bps.data as BudgetProposalRow[]) || []);
+
+    if (projRes.data) {
+      setProject(projRes.data as ProjectRow);
+      setEditForm({
+        name: projRes.data.name || '', description: projRes.data.description || '',
+        status: projRes.data.status || 'planning', priority: projRes.data.priority || 'medium',
+        budget: projRes.data.budget || 0, progress: projRes.data.progress || 0,
+        start_date: projRes.data.start_date || '', end_date: projRes.data.end_date || '',
+      });
+    }
+    setTasks((taskRes.data as TaskRow[]) || []);
+    setVersions((verRes.data as VersionRow[]) || []);
+    setMembers((memRes.data as MemberRow[]) || []);
+    setAssignments((asgRes.data as { id: string; member_id: string; role_in_project: string }[]) || []);
+    setRisks((riskRes.data as RiskRow[]) || []);
+    setActivity((actRes.data as ActivityRow[]) || []);
     setLoading(false);
+  }, [projectId]);
+
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  // Real-time subscription for tasks
+  useEffect(() => {
+    if (!projectId) return;
+    const sub = supabase
+      .channel(`tasks:${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `project_id=eq.${projectId}` }, () => loadAll())
+      .subscribe();
+    return () => { supabase.removeChannel(sub); };
+  }, [projectId, loadAll]);
+
+  // --- Task CRUD ---
+  function openNewTask() {
+    setEditingTask(null);
+    setTaskForm({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', estimated_hours: '', due_date: '' });
+    setShowTaskModal(true);
   }
 
-  async function logAndReload(action: string, description: string) {
-    await logActivity(projectId, action, description, profile?.id || null);
-    loadAll();
+  function openEditTask(task: TaskRow) {
+    setEditingTask(task);
+    setTaskForm({
+      title: task.title, description: task.description || '', status: task.status,
+      priority: task.priority || 'medium', assigned_to: task.assigned_to || '',
+      estimated_hours: task.estimated_hours != null ? String(task.estimated_hours) : '',
+      due_date: task.due_date || '',
+    });
+    setShowTaskModal(true);
   }
 
-  async function saveEdit() {
-    if (!project) return;
-    const { error } = await supabase.from('projects').update({
-      name: editForm.name, description: editForm.description, priority: editForm.priority,
-      status: editForm.status, start_date: editForm.start_date, end_date: editForm.end_date, progress: editForm.progress,
-    }).eq('id', project.id);
-    if (error) { toast.error('Failed to save: ' + error.message); return; }
-    toast.success('Project updated');
-    await logActivity(project.id, 'project_updated', `Project details updated by ${profile?.full_name || 'Unknown'}`, profile?.id || null);
-    setEditing(false); loadAll();
+  async function saveTask() {
+    if (!taskForm.title.trim()) { toast.error('Task title is required'); return; }
+    setSavingTask(true);
+    const payload: Record<string, unknown> = {
+      project_id: projectId,
+      title: taskForm.title.trim(),
+      description: taskForm.description.trim() || null,
+      status: taskForm.status,
+      priority: taskForm.priority,
+      assigned_to: taskForm.assigned_to || null,
+      estimated_hours: taskForm.estimated_hours ? Number(taskForm.estimated_hours) : null,
+      due_date: taskForm.due_date || null,
+      version_id: activeVersionId,
+    };
+    try {
+      if (editingTask) {
+        const { error } = await supabase.from('tasks').update(payload).eq('id', editingTask.id);
+        if (error) throw error;
+        await logActivity(projectId, 'task_updated', `Task "${taskForm.title}" updated`, profile?.id || null);
+        toast.success('Task updated');
+      } else {
+        const { error } = await supabase.from('tasks').insert({ ...payload, created_by: profile?.id });
+        if (error) throw error;
+        await logActivity(projectId, 'task_created', `Task "${taskForm.title}" created`, profile?.id || null);
+        toast.success('Task created');
+      }
+      setShowTaskModal(false); setEditingTask(null);
+      setTaskForm({ title: '', description: '', status: 'todo', priority: 'medium', assigned_to: '', estimated_hours: '', due_date: '' });
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save task');
+    } finally {
+      setSavingTask(false);
+    }
   }
 
-  async function toggleChecklistItem(id: string, current: boolean, item: string) {
-    await supabase.from('project_requirements_checklist').update({ is_done: !current }).eq('id', id);
-    setChecklist(prev => prev.map(c => c.id === id ? { ...c, is_done: !current } : c));
-    await logActivity(projectId, 'checklist_toggled', `Checklist item "${item}" marked as ${!current ? 'done' : 'pending'}`, profile?.id || null);
+  async function deleteTask(taskId: string, taskTitle: string) {
+    if (!confirm(`Delete task "${taskTitle}"?`)) return;
+    const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+    if (error) { toast.error('Failed to delete task'); return; }
+    setTasks(prev => prev.filter(t => t.id !== taskId));
+    await logActivity(projectId, 'task_deleted', `Task "${taskTitle}" deleted`, profile?.id || null);
+    toast.success('Task deleted');
   }
 
   async function updateTaskStatus(taskId: string, status: string, taskTitle: string) {
-    await supabase.from('tasks').update({ status }).eq('id', taskId);
+    const completedAt = status === 'done' ? new Date().toISOString() : null;
+    const { error } = await supabase.from('tasks').update({ status, completed_at: completedAt }).eq('id', taskId);
+    if (error) { toast.error('Failed to update status'); return; }
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status } : t));
-    await logActivity(projectId, 'task_status_changed', `Task "${taskTitle}" status changed to ${status.replace('_', ' ')}`, profile?.id || null);
-    toast.success('Task updated');
+    await logActivity(projectId, 'task_status_changed', `Task "${taskTitle}" moved to ${status.replace('_', ' ')}`, profile?.id || null);
   }
 
   async function addTaskUpdate(taskId: string, taskTitle: string) {
     if (!taskUpdate.trim()) return;
-    await logActivity(projectId, 'task_update_added', `Update on "${taskTitle}": ${taskUpdate}`, profile?.id || null, { task_id: taskId });
-    setTaskUpdate(''); setShowTaskUpdate(null);
-    toast.success('Update added to activity log');
-    loadAll();
-  }
-
-  async function closeProject(type: 'completed' | 'cancelled') {
-    if (!project) return;
-    setClosing(true);
-    const { error } = await supabase.from('projects').update({ status: type, progress: type === 'completed' ? 100 : project.progress }).eq('id', project.id);
-    if (error) { toast.error('Failed: ' + error.message); setClosing(false); return; }
-    await logActivity(project.id, type === 'completed' ? 'project_completed' : 'project_cancelled',
-      `Project "${project.name}" ${type === 'completed' ? 'marked as completed and archived' : 'cancelled and archived'} by ${profile?.full_name || 'Unknown'}`,
-      profile?.id || null, { previous_status: project.status });
-    // Notify team members
-    const teamIds = assignments.filter(a => a.member_id !== profile?.id).map(a => a.member_id);
-    if (teamIds.length > 0) {
-      await supabase.from('notifications').insert(teamIds.map(uid => ({
-        user_id: uid, title: type === 'completed' ? 'Project Completed' : 'Project Cancelled',
-        message: `Project "${project.name}" has been ${type === 'completed' ? 'completed and archived' : 'cancelled'}.`,
-        type: type === 'completed' ? 'success' : 'warning', is_read: false, link: `/projects/${project.id}`,
-      })));
-    }
-    setClosing(false); setShowCloseConfirm(null);
-    toast.success(type === 'completed' ? 'Project completed and archived' : 'Project cancelled and archived');
-    loadAll();
-  }
-
-  async function createChangeRequest() {
-    if (!crForm.title.trim()) return;
-    const { error } = await supabase.from('project_change_requests').insert({
-      project_id: projectId, title: crForm.title, description: crForm.description,
-      change_type: crForm.change_type, impact_analysis: crForm.impact_analysis,
-      status: 'pending', requested_by: profile?.id,
+    const { error } = await supabase.from('project_activity_log').insert({
+      project_id: projectId, action: 'task_update', description: `Update on "${taskTitle}": ${taskUpdate.trim()}`,
+      actor_id: profile?.id || null, metadata: { task_id: taskId },
     });
-    if (error) { toast.error('Failed: ' + error.message); return; }
-    await logActivity(projectId, 'change_request_created', `Change request "${crForm.title}" submitted by ${profile?.full_name || 'Unknown'}`, profile?.id || null);
-    setCrForm({ title: '', description: '', change_type: 'scope', impact_analysis: '' });
-    setShowChangeRequest(false); toast.success('Change request submitted');
+    if (error) { toast.error('Failed to add update'); return; }
+    setTaskUpdate(''); setShowTaskUpdate(null);
+    toast.success('Update posted');
     loadAll();
   }
 
-  async function approveChangeRequest(id: string, title: string) {
-    await supabase.from('project_change_requests').update({ status: 'approved', approved_by: profile?.id, approved_at: new Date().toISOString() }).eq('id', id);
-    await logActivity(projectId, 'change_request_approved', `Change request "${title}" approved by ${profile?.full_name}`, profile?.id || null);
-    toast.success('Change request approved'); loadAll();
+  // --- Version CRUD ---
+  async function createVersion() {
+    if (!versionForm.version_label.trim()) { toast.error('Version label is required'); return; }
+    setSavingVersion(true);
+    try {
+      const { error } = await supabase.from('project_versions').insert({
+        project_id: projectId, version_label: versionForm.version_label.trim(),
+        description: versionForm.description.trim() || null, status: versionForm.status,
+        created_by: profile?.id,
+      });
+      if (error) throw error;
+      await logActivity(projectId, 'version_created', `Version "${versionForm.version_label}" created`, profile?.id || null);
+      toast.success('Version created');
+      setShowVersionModal(false);
+      setVersionForm({ version_label: '', description: '', status: 'planning' });
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create version');
+    } finally {
+      setSavingVersion(false);
+    }
   }
 
-  async function exportProject() {
-    if (!project) return;
-    setExporting(true);
-    const data = {
-      project, customer, milestones, phases, tasks, risks, dependencies,
-      documents, checklist, changeRequests, assignments, budgetProposals, activity,
-      exported_at: new Date().toISOString(), exported_by: profile?.full_name,
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${project.project_code || project.name}-export.json`;
-    a.click(); URL.revokeObjectURL(url);
-    await logActivity(projectId, 'project_exported', `Project exported by ${profile?.full_name}`, profile?.id || null);
-    setExporting(false); toast.success('Project exported');
+  // --- Risk CRUD ---
+  async function saveRisk() {
+    if (!riskForm.risk.trim()) { toast.error('Risk description is required'); return; }
+    setSavingRisk(true);
+    try {
+      const { error } = await supabase.from('project_risks').insert({
+        project_id: projectId, risk: riskForm.risk.trim(),
+        probability: riskForm.probability, impact: riskForm.impact,
+        mitigation: riskForm.mitigation.trim() || null, status: riskForm.status,
+        owner: profile?.id,
+      });
+      if (error) throw error;
+      await logActivity(projectId, 'risk_added', `Risk "${riskForm.risk}" identified`, profile?.id || null);
+      toast.success('Risk added');
+      setShowRiskModal(false);
+      setRiskForm({ risk: '', probability: 'medium', impact: 'medium', mitigation: '', status: 'open' });
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save risk');
+    } finally {
+      setSavingRisk(false);
+    }
+  }
+
+  async function deleteRisk(riskId: string, riskDesc: string) {
+    if (!confirm(`Delete risk "${riskDesc}"?`)) return;
+    const { error } = await supabase.from('project_risks').delete().eq('id', riskId);
+    if (error) { toast.error('Failed to delete risk'); return; }
+    setRisks(prev => prev.filter(r => r.id !== riskId));
+    toast.success('Risk deleted');
+  }
+
+  // --- Member assignment ---
+  async function saveMember() {
+    if (!memberForm.member_id) { toast.error('Select a team member'); return; }
+    setSavingMember(true);
+    try {
+      const { error } = await supabase.from('project_assignments').insert({
+        project_id: projectId, member_id: memberForm.member_id, role_in_project: memberForm.role_in_project,
+      });
+      if (error) throw error;
+      await logActivity(projectId, 'member_added', `Team member assigned to project`, profile?.id || null);
+      toast.success('Member assigned');
+      setShowMemberModal(false);
+      setMemberForm({ member_id: '', role_in_project: 'member' });
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to assign member');
+    } finally {
+      setSavingMember(false);
+    }
+  }
+
+  async function removeMember(assignmentId: string) {
+    if (!confirm('Remove this member from the project?')) return;
+    const { error } = await supabase.from('project_assignments').delete().eq('id', assignmentId);
+    if (error) { toast.error('Failed to remove member'); return; }
+    setAssignments(prev => prev.filter(a => a.id !== assignmentId));
+    toast.success('Member removed');
+  }
+
+  // --- Project settings ---
+  async function saveProject() {
+    if (!editForm.name.trim()) { toast.error('Project name is required'); return; }
+    setSavingProject(true);
+    try {
+      const { error } = await supabase.from('projects').update({
+        name: editForm.name.trim(), description: editForm.description.trim() || null,
+        status: editForm.status, priority: editForm.priority, budget: Number(editForm.budget) || 0,
+        progress: Number(editForm.progress) || 0, start_date: editForm.start_date || null,
+        end_date: editForm.end_date || null, updated_at: new Date().toISOString(),
+      }).eq('id', projectId);
+      if (error) throw error;
+      await logActivity(projectId, 'project_updated', `Project details updated`, profile?.id || null);
+      toast.success('Project saved');
+      loadAll();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save project');
+    } finally {
+      setSavingProject(false);
+    }
+  }
+
+  async function archiveProject() {
+    if (!confirm('Archive this project? It will be moved to the archived list.')) return;
+    const { error } = await supabase.from('projects').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', projectId);
+    if (error) { toast.error('Failed to archive project'); return; }
+    await logActivity(projectId, 'project_archived', `Project archived`, profile?.id || null);
+    toast.success('Project archived');
+    loadAll();
   }
 
   if (loading) {
-    return (<div><TopBar title="Project" subtitle="Loading..." />
-      <div className="flex items-center justify-center h-64"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div></div>);
-  }
-  if (!project) {
-    return (<div><TopBar title="Project" subtitle="Not found" />
-      <div className="p-6 text-center"><p className="text-muted-foreground">Project not found.</p>
-      <button onClick={() => router.push('/projects')} className="mt-3 text-sm text-primary hover:underline">Back to Projects</button></div></div>);
+    return (
+      <div>
+        <TopBar title="Project Details" subtitle="Loading..." />
+        <div className="p-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-8 animate-pulse">
+            <div className="h-6 bg-slate-200 rounded w-1/3 mb-4" />
+            <div className="h-4 bg-slate-200 rounded w-1/2 mb-2" />
+            <div className="h-4 bg-slate-200 rounded w-2/5" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  const taskStatusColor = (s: string) => ({
-    done: 'bg-emerald-100 text-emerald-700', in_progress: 'bg-blue-100 text-blue-700',
-    todo: 'bg-gray-100 text-gray-600', review: 'bg-amber-100 text-amber-700', blocked: 'bg-red-100 text-red-600',
-  }[s] || 'bg-gray-100 text-gray-600');
+  if (!project) {
+    return (
+      <div>
+        <TopBar title="Project Not Found" subtitle="" />
+        <div className="p-6 text-center">
+          <AlertCircle size={40} className="text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-500">This project could not be found or you don&apos;t have access.</p>
+          <button onClick={() => router.push('/projects')} className="mt-4 text-sm text-primary hover:underline">Back to Projects</button>
+        </div>
+      </div>
+    );
+  }
+
+  const assignedMemberIds = assignments.map(a => a.member_id);
+  const availableMembers = members.filter(m => !assignedMemberIds.includes(m.id));
 
   return (
     <div>
-      <TopBar title={project.name} subtitle={project.project_code || `Project · ${(project.project_type || 'internal').replace('_', ' ')}`} />
-      <div className="flex flex-col md:flex-row">
-        {/* Mobile section selector */}
-        <div className="md:hidden border-b border-border bg-white p-3">
-          <select value={activeSection} onChange={e => setActiveSection(e.target.value)} className="w-full px-3 py-2 text-sm border border-input rounded-lg bg-white">
-            {SECTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
-          </select>
-        </div>
-        <aside className="hidden md:block w-56 bg-white border-r border-border h-[calc(100vh-64px)] overflow-y-auto flex-shrink-0 sticky top-16">
-          <div className="p-3">
-            <button onClick={() => router.push('/projects')} className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground mb-3 transition-colors">
-              <ArrowLeft size={14} /> All Projects
-            </button>
-            <div className="space-y-0.5">
-              {SECTIONS.map((section) => { const Icon = section.icon; return (
-                <button key={section.id} onClick={() => setActiveSection(section.id)}
-                  className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg transition-colors ${activeSection === section.id ? 'bg-primary/10 text-primary font-semibold' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}>
-                  <Icon size={15} /><span className="text-xs">{section.label}</span>
-                </button>);})}
-            </div>
-            <div className="mt-4 pt-3 border-t border-border">
-              <button onClick={exportProject} disabled={exporting}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 rounded-lg transition-colors disabled:opacity-50">
-                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />} Export Project
+      <TopBar
+        title={project.name}
+        subtitle={project.project_code ? `Code: ${project.project_code}` : 'Project Details'}
+      />
+      <div className="p-4 sm:p-6 space-y-5">
+        {/* Back link */}
+        <button onClick={() => router.push('/projects')} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700">
+          <ArrowLeft size={15} /> Back to Projects
+        </button>
+
+        {/* Section tabs */}
+        <div className="flex flex-wrap gap-1.5 border-b border-slate-200 pb-1">
+          {SECTIONS.map(s => {
+            const Icon = s.icon;
+            return (
+              <button
+                key={s.id}
+                onClick={() => setActiveSection(s.id)}
+                className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+                  activeSection === s.id ? 'bg-primary text-white' : 'text-slate-500 hover:bg-slate-100'
+                }`}
+              >
+                <Icon size={14} /> {s.label}
               </button>
+            );
+          })}
+        </div>
+
+        {/* OVERVIEW */}
+        {activeSection === 'overview' && (
+          <div className="space-y-4">
+            <div className="bg-white rounded-xl border border-slate-200 p-6">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <h2 className="text-xl font-bold text-slate-900">{project.name}</h2>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[project.status] || 'bg-slate-100'}`}>
+                      {project.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  {project.description && <p className="text-sm text-slate-600">{project.description}</p>}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-400 mb-1">Budget</p>
+                  <p className="text-lg font-bold text-slate-800">${(project.budget / 1000).toFixed(0)}K</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-400 mb-1">Spent</p>
+                  <p className="text-lg font-bold text-slate-800">${(project.spent / 1000).toFixed(0)}K</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-400 mb-1">Progress</p>
+                  <p className="text-lg font-bold text-slate-800">{project.progress}%</p>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-3">
+                  <p className="text-xs text-slate-400 mb-1">Priority</p>
+                  <p className="text-lg font-bold capitalize text-slate-800">{project.priority}</p>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <div className="flex justify-between text-xs mb-1">
+                  <span className="text-slate-400">Overall Progress</span>
+                  <span className="font-semibold text-slate-600">{project.progress}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-200 rounded-full">
+                  <div className="h-2 bg-primary rounded-full transition-all" style={{ width: `${project.progress}%` }} />
+                </div>
+              </div>
+
+              {(project.start_date || project.end_date) && (
+                <div className="flex items-center gap-4 mt-4 text-sm text-slate-500">
+                  {project.start_date && <div className="flex items-center gap-1.5"><Calendar size={14} /> Start: {new Date(project.start_date).toLocaleDateString()}</div>}
+                  {project.end_date && <div className="flex items-center gap-1.5"><Calendar size={14} /> End: {new Date(project.end_date).toLocaleDateString()}</div>}
+                </div>
+              )}
+            </div>
+
+            {/* Quick stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                <ListTree size={20} className="text-blue-500 mx-auto mb-1" />
+                <p className="text-2xl font-bold text-slate-800">{tasks.length}</p>
+                <p className="text-xs text-slate-400">Total Tasks</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                <CheckCircle size={20} className="text-emerald-500 mx-auto mb-1" />
+                <p className="text-2xl font-bold text-slate-800">{tasks.filter(t => t.status === 'done').length}</p>
+                <p className="text-xs text-slate-400">Completed</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                <Users size={20} className="text-purple-500 mx-auto mb-1" />
+                <p className="text-2xl font-bold text-slate-800">{assignments.length}</p>
+                <p className="text-xs text-slate-400">Team Members</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
+                <GitBranch size={20} className="text-amber-500 mx-auto mb-1" />
+                <p className="text-2xl font-bold text-slate-800">{versions.length}</p>
+                <p className="text-xs text-slate-400">Versions</p>
+              </div>
             </div>
           </div>
-        </aside>
+        )}
 
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto">
-          {isArchived && (
-            <div className="mb-4 p-3 bg-slate-100 border border-slate-300 rounded-lg flex items-center gap-2">
-              <Archive size={16} className="text-slate-500" />
-              <p className="text-sm text-slate-600">This project has been {project.status}. It is archived and no longer appears in active projects.</p>
-            </div>
-          )}
-
-          {/* OVERVIEW */}
-          {activeSection === 'overview' && (
-            <div className="space-y-5">
-              <div className="flex items-start justify-between">
-                <div><h2 className="text-xl font-bold text-slate-900">{project.name}</h2>
-                <p className="text-sm text-slate-500 mt-0.5">{project.description || 'No description'}</p></div>
-                {canManage && !isArchived && (
-                  <button onClick={() => setEditing(!editing)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border border-slate-300 rounded-lg hover:bg-slate-50">
-                    <Edit2 size={13} /> {editing ? 'Cancel' : 'Edit'}
-                  </button>)}
+        {/* TASKS - Kanban Board */}
+        {activeSection === 'tasks' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="text-lg font-bold text-slate-900">Tasks Board</h3>
+              <div className="flex items-center gap-2">
+                {versions.length > 0 && (
+                  <select
+                    value={activeVersionId || ''}
+                    onChange={e => setActiveVersionId(e.target.value || null)}
+                    className="text-xs border border-slate-300 rounded-lg px-2 py-1.5 bg-white"
+                  >
+                    <option value="">All versions</option>
+                    {versions.map(v => <option key={v.id} value={v.id}>{v.version_label}</option>)}
+                  </select>
+                )}
+                {!isArchived && (
+                  <button onClick={openNewTask} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">
+                    <Plus size={14} /> Add Task
+                  </button>
+                )}
               </div>
-              {editing ? (
-                <div className="p-4 bg-white rounded-xl border border-slate-200 space-y-3">
-                  <input value={editForm.name || ''} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" placeholder="Project name" />
-                  <textarea value={editForm.description || ''} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={3} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none" placeholder="Description" />
-                  <div className="grid grid-cols-3 gap-3">
-                    <select value={editForm.status || 'planning'} onChange={e => setEditForm({ ...editForm, status: e.target.value as any })} className="px-3 py-2 text-sm border border-slate-300 rounded-lg">
-                      {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                    </select>
-                    <select value={editForm.priority || 'medium'} onChange={e => setEditForm({ ...editForm, priority: e.target.value as any })} className="px-3 py-2 text-sm border border-slate-300 rounded-lg">
-                      {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
-                    </select>
-                    <input type="number" value={editForm.progress || 0} onChange={e => setEditForm({ ...editForm, progress: Number(e.target.value) })} className="px-3 py-2 text-sm border border-slate-300 rounded-lg" placeholder="Progress %" />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {KANBAN_COLS.map(col => {
+                const colTasks = tasks.filter(t => t.status === col.key && (!activeVersionId || t.version_id === activeVersionId));
+                return (
+                  <div
+                    key={col.key}
+                    className={`${col.bg} rounded-xl border border-slate-200 p-3 min-h-[200px] transition-all ${dragOverCol === col.key ? 'ring-2 ring-primary' : ''}`}
+                    onDragOver={e => { e.preventDefault(); setDragOverCol(col.key); }}
+                    onDragLeave={() => setDragOverCol(null)}
+                    onDrop={e => {
+                      e.preventDefault(); setDragOverCol(null);
+                      if (draggedTaskId) {
+                        const task = tasks.find(t => t.id === draggedTaskId);
+                        if (task && task.status !== col.key) updateTaskStatus(task.id, col.key, task.title);
+                      }
+                      setDraggedTaskId(null);
+                    }}
+                  >
+                    <div className="flex items-center justify-between mb-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-2 h-2 rounded-full ${col.color}`} />
+                        <p className="text-xs font-bold text-slate-700">{col.label}</p>
+                      </div>
+                      <span className="text-xs font-semibold text-slate-400 bg-white px-1.5 py-0.5 rounded-full">{colTasks.length}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {colTasks.length === 0 ? (
+                        <p className="text-xs text-slate-400 text-center py-4">No tasks</p>
+                      ) : colTasks.map(task => {
+                        const assignee = members.find(m => m.id === task.assigned_to);
+                        return (
+                          <div
+                            key={task.id}
+                            draggable={!isArchived}
+                            onDragStart={() => setDraggedTaskId(task.id)}
+                            onDragEnd={() => setDraggedTaskId(null)}
+                            className="bg-white rounded-lg border border-slate-200 p-3 cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow group"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-medium text-slate-800 flex-1">{task.title}</p>
+                              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => openEditTask(task)} className="p-1 rounded hover:bg-slate-100 text-slate-400 hover:text-slate-600" title="Edit">
+                                  <Pencil size={12} />
+                                </button>
+                                <button onClick={() => deleteTask(task.id, task.title)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600" title="Delete">
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                            {task.description && <p className="text-xs text-slate-500 mt-1 line-clamp-2">{task.description}</p>}
+                            <div className="flex items-center justify-between mt-2">
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${PRIORITY_BADGE[task.priority] || PRIORITY_BADGE.medium}`}>
+                                {task.priority || 'medium'}
+                              </span>
+                              {assignee && (
+                                <div className="flex items-center gap-1">
+                                  <div className="w-5 h-5 rounded-full bg-primary flex items-center justify-center">
+                                    <span className="text-white text-[8px] font-bold">
+                                      {assignee.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500">{assignee.full_name?.split(' ')[0]}</span>
+                                </div>
+                              )}
+                            </div>
+                            {task.due_date && <p className="text-[10px] text-slate-400 mt-1.5">Due: {new Date(task.due_date).toLocaleDateString()}</p>}
+                            {task.estimated_hours != null && <p className="text-[10px] text-slate-400">Est: {task.estimated_hours}h</p>}
+                            <button onClick={() => setShowTaskUpdate(showTaskUpdate === task.id ? null : task.id)} className="text-[10px] text-primary hover:underline flex items-center gap-1 mt-1.5">
+                              <Send size={9} /> Add update
+                            </button>
+                            {showTaskUpdate === task.id && (
+                              <div className="mt-1.5 flex gap-1.5">
+                                <input value={taskUpdate} onChange={e => setTaskUpdate(e.target.value)} placeholder="Update..."
+                                  className="flex-1 px-2 py-1 text-[10px] border border-slate-300 rounded outline-none focus:ring-1 focus:ring-primary" />
+                                <button onClick={() => addTaskUpdate(task.id, task.title)} className="px-2 py-1 text-[10px] font-semibold bg-primary text-white rounded">Post</button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs text-slate-500">Start Date</label><input type="date" value={editForm.start_date || ''} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" /></div>
-                    <div><label className="text-xs text-slate-500">End Date</label><input type="date" value={editForm.end_date || ''} onChange={e => setEditForm({ ...editForm, end_date: e.target.value })} className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" /></div>
-                  </div>
-                  <button onClick={saveEdit} className="px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">Save Changes</button>
+                );
+              })}
+            </div>
+
+            {tasks.filter(t => t.status === 'blocked').length > 0 && (
+              <div className="mt-4">
+                <p className="text-sm font-semibold text-red-600 mb-2">Blocked Tasks</p>
+                <div className="space-y-2">
+                  {tasks.filter(t => t.status === 'blocked').map(task => (
+                    <div key={task.id} className="bg-red-50 rounded-xl border border-red-200 p-3 flex items-center gap-3">
+                      <TriangleAlert size={14} className="text-red-500" />
+                      <p className="text-sm font-medium text-slate-700 flex-1">{task.title}</p>
+                      <button onClick={() => openEditTask(task)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-slate-600"><Pencil size={12} /></button>
+                      <button onClick={() => deleteTask(task.id, task.title)} className="p-1 rounded hover:bg-red-100 text-slate-400 hover:text-red-600"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
                 </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                    {[{ label: 'Status', value: project.status?.replace('_', ' '), color: statusColors[project.status] },
-                      { label: 'Priority', value: project.priority },
-                      { label: 'Progress', value: `${project.progress}%` },
-                      { label: 'Type', value: (project.project_type || 'internal').replace('_', ' ') },
-                    ].map(({ label, value, color }) => (
-                      <div key={label} className="bg-white rounded-xl border border-slate-200 p-3">
-                        <p className="text-xs text-slate-400">{label}</p>
-                        {color ? <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${color} inline-block mt-1`}>{value}</span>
-                          : <p className="text-sm font-semibold text-slate-700 capitalize mt-1">{value}</p>}
-                      </div>))}
-                  </div>
-                  <div><p className="text-sm font-semibold text-slate-700 mb-2">Progress</p>
-                    <div className="w-full h-2.5 bg-slate-200 rounded-full"><div className="h-2.5 bg-primary rounded-full transition-all" style={{ width: `${project.progress}%` }} /></div>
-                  </div>
-                  {project.objectives && project.objectives.length > 0 && (
-                    <div className="bg-white rounded-xl border border-slate-200 p-4">
-                      <p className="text-sm font-semibold text-slate-700 mb-2">Objectives</p>
-                      <ul className="space-y-1">{project.objectives.filter(o => o).map((o, i) => (
-                        <li key={i} className="text-sm text-slate-600 flex items-start gap-2"><CheckCircle size={14} className="text-emerald-500 mt-0.5 flex-shrink-0" /> {o}</li>))}</ul>
-                    </div>)}
-                  {project.tags && project.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5">{project.tags.map(tag => (
-                      <span key={tag} className="px-2.5 py-1 text-xs font-medium bg-primary/10 text-primary rounded-full">{tag}</span>))}</div>)}
-                </>)}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* VERSIONS */}
+        {activeSection === 'versions' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Project Versions</h3>
+              {canManage && !isArchived && (
+                <button onClick={() => setShowVersionModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">
+                  <Plus size={14} /> New Version
+                </button>
+              )}
             </div>
-          )}
-
-          {/* SCOPE */}
-          {activeSection === 'scope' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Scope & Description</h3>
-              <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm text-slate-600">{project.description || 'No description provided.'}</p></div>
-              {project.deliverables && project.deliverables.length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm font-semibold text-slate-700 mb-2">Deliverables</p>
-                  <ul className="space-y-1">{project.deliverables.filter(d => d).map((d, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex items-start gap-2"><CheckCircle size={14} className="text-blue-500 mt-0.5" /> {d}</li>))}</ul></div>)}
-              {project.success_criteria && project.success_criteria.length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm font-semibold text-slate-700 mb-2">Success Criteria</p>
-                  <ul className="space-y-1">{project.success_criteria.filter(s => s).map((s, i) => (
-                    <li key={i} className="text-sm text-slate-600 flex items-start gap-2"><CheckCircle size={14} className="text-emerald-500 mt-0.5" /> {s}</li>))}</ul></div>)}
-            </div>)}
-
-          {/* CUSTOMER */}
-          {activeSection === 'customer' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Customer Information</h3>
-              {customer ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center"><span className="text-primary font-bold">{customer.name.charAt(0)}</span></div>
-                    <div><p className="font-semibold text-slate-800">{customer.name}</p><p className="text-sm text-slate-500">{customer.company}</p></div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    {[['Email', customer.email], ['Phone', customer.phone], ['Country', customer.country], ['City', customer.city],
-                      ['Industry', customer.industry], ['TIN', customer.tin], ['Website', customer.website], ['Contact', customer.contact_person_name],
-                    ].map(([label, value]) => value ? (<div key={label}><p className="text-xs text-slate-400">{label}</p><p className="text-sm text-slate-700">{value}</p></div>) : null)}
-                  </div>
-                </div>) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><Building2 size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">Internal project — no external customer.</p></div>)}
-            </div>)}
-
-          {/* FINANCIAL */}
-          {activeSection === 'financial' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Financial Performance</h3>
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                {[{ label: 'Customer Price', value: `$${(project.customer_price || 0).toLocaleString()}`, color: 'text-emerald-600' },
-                  { label: 'Budget', value: `$${(project.budget || 0).toLocaleString()}`, color: 'text-blue-600' },
-                  { label: 'Spent', value: `$${(project.spent || 0).toLocaleString()}`, color: 'text-red-600' },
-                  { label: 'Expected Revenue', value: `$${(project.expected_revenue || 0).toLocaleString()}`, color: 'text-emerald-600' },
-                ].map(({ label, value, color }) => (
-                  <div key={label} className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-xs text-slate-400">{label}</p><p className={`text-lg font-bold ${color}`}>{value}</p></div>))}
+            <p className="text-sm text-slate-500">Create different versions of this project with separate tasks and details, all under the same project name.</p>
+            {versions.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <GitBranch size={32} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No versions yet. Create one to manage different versions of this project.</p>
               </div>
-              {project.estimated_costs && Object.keys(project.estimated_costs).length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm font-semibold text-slate-700 mb-3">Estimated Cost Breakdown</p>
-                  <div className="space-y-2">{Object.entries(project.estimated_costs).filter(([_, v]) => Number(v) > 0).map(([key, value]) => (
-                    <div key={key} className="flex justify-between text-sm"><span className="text-slate-600 capitalize">{key}</span><span className="font-semibold text-slate-800">${Number(value).toLocaleString()}</span></div>))}</div>
-                </div>)}
-            </div>)}
-
-          {/* BUDGET PROPOSALS */}
-          {activeSection === 'budget' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Budget Proposals</h3>
-              {budgetProposals.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><Wallet size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No budget proposals for this project.</p></div>
-              ) : (
-                <div className="space-y-3">{budgetProposals.map(bp => (
-                  <div key={bp.id} className="bg-white rounded-xl border border-slate-200 p-5">
-                    <div className="flex items-start justify-between mb-2">
-                      <div><p className="text-sm font-semibold text-slate-800">{bp.title}</p><p className="text-xs text-slate-500 mt-0.5">{bp.description}</p></div>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${bp.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : bp.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{bp.status}</span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-3 mt-3 text-xs">
-                      <div><p className="text-slate-400">Amount</p><p className="font-semibold text-slate-700">{bp.currency} {bp.amount.toLocaleString()}</p></div>
-                      <div><p className="text-slate-400">Category</p><p className="font-semibold text-slate-700">{bp.category}</p></div>
-                      <div><p className="text-slate-400">Priority</p><p className="font-semibold text-slate-700">{bp.priority}</p></div>
-                      <div><p className="text-slate-400">Approval Step</p><p className="font-semibold text-slate-700">{bp.current_step} / {bp.total_steps}</p></div>
-                    </div>
-                  </div>))}</div>)}
-            </div>)}
-
-          {/* TEAM */}
-          {activeSection === 'team' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Team & Resource Allocation</h3>
-              {assignments.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><Users size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No team members assigned.</p></div>
-              ) : (
-                <div className="space-y-2">{assignments.map((a) => (
-                  <div key={a.id} className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center"><span className="text-white text-xs font-bold">{a.member?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}</span></div>
-                    <div className="flex-1"><p className="text-sm font-semibold text-slate-800">{a.member?.full_name || 'Unknown'}</p><p className="text-xs text-slate-500 capitalize">{a.role_in_project.replace('_', ' ')}</p></div>
-                    <div className="flex gap-1">{a.can_edit_tasks && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">Tasks</span>}{a.can_manage_members && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">Manage</span>}</div>
-                    <span className="text-xs text-slate-400">{a.member?.role}</span>
-                  </div>))}</div>)}
-            </div>)}
-
-          {/* TIMELINE */}
-          {activeSection === 'timeline' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Timeline & Milestones</h3>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {[['Start', project.start_date], ['End', project.end_date], ['Deployment', project.deployment_date],
-                  ['Warranty End', project.warranty_end], ['Support End', project.support_end], ['Maintenance End', project.maintenance_end],
-                ].map(([label, date]) => (
-                  <div key={label} className="bg-white rounded-xl border border-slate-200 p-3"><p className="text-xs text-slate-400">{label}</p><p className="text-sm font-semibold text-slate-700">{date ? new Date(date).toLocaleDateString() : '—'}</p></div>))}
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm font-semibold text-slate-700 mb-3">Milestones</p>
-                <div className="space-y-2">{milestones.map((m, i) => (
-                  <div key={m.id} className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-lg">
-                    <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-xs font-bold text-primary">{i + 1}</div>
-                    <p className="text-sm font-medium text-slate-700 flex-1">{m.name}</p>
-                    <span className="text-xs text-slate-500">{m.target_date ? new Date(m.target_date).toLocaleDateString() : '—'}</span>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${m.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>{m.status.replace('_', ' ')}</span>
-                  </div>))}</div>
-              </div>
-            </div>)}
-
-          {/* TASKS */}
-          {activeSection === 'tasks' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Tasks & Progress</h3>
-              <div className="grid grid-cols-4 gap-3">
-                {['todo', 'in_progress', 'review', 'done'].map(s => (
-                  <div key={s} className="bg-white rounded-xl border border-slate-200 p-3 text-center"><p className="text-lg font-bold text-slate-800">{tasks.filter(t => t.status === s).length}</p><p className="text-xs text-slate-400 capitalize">{s.replace('_', ' ')}</p></div>))}
-              </div>
-              <div className="space-y-2">
-                {tasks.length === 0 ? (<div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><ListTree size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No tasks yet.</p></div>) : (
-                  tasks.map(task => { const assignee = members.find(m => m.id === task.assigned_to); return (
-                    <div key={task.id} className="bg-white rounded-xl border border-slate-200 p-4">
-                      <div className="flex items-center gap-3">
-                        <div className={`w-1.5 h-1.5 rounded-full ${task.status === 'done' ? 'bg-emerald-500' : task.status === 'blocked' ? 'bg-red-500' : 'bg-blue-500'}`} />
-                        <p className="text-sm font-medium text-slate-700 flex-1">{task.title}</p>
-                        {assignee && <span className="text-xs text-slate-500">{assignee.full_name}</span>}
-                        <select value={task.status} onChange={e => updateTaskStatus(task.id, e.target.value, task.title)} disabled={isArchived}
-                          className="text-xs border border-slate-300 rounded-lg px-2 py-1 bg-white disabled:opacity-50">
-                          {['todo','in_progress','review','done','blocked'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
-                        </select>
-                      </div>
-                      {task.description && <p className="text-xs text-slate-500 mt-2 ml-4">{task.description}</p>}
-                      <div className="flex items-center gap-2 mt-2 ml-4">
-                        <button onClick={() => setShowTaskUpdate(showTaskUpdate === task.id ? null : task.id)} className="text-xs text-primary hover:underline flex items-center gap-1">
-                          <Send size={11} /> Add update
-                        </button>
-                        {task.estimated_hours != null && <span className="text-xs text-slate-400">Est: {task.estimated_hours}h</span>}
-                      </div>
-                      {showTaskUpdate === task.id && (
-                        <div className="mt-2 ml-4 flex gap-2">
-                          <input value={taskUpdate} onChange={e => setTaskUpdate(e.target.value)} placeholder="Add a progress update..."
-                            className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg outline-none focus:ring-1 focus:ring-primary" />
-                          <button onClick={() => addTaskUpdate(task.id, task.title)} className="px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg">Post</button>
-                        </div>)}
-                    </div>);}))}
-              </div>
-            </div>)}
-
-          {/* DOCUMENTS */}
-          {activeSection === 'documents' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Documents & Repository</h3>
-              {project.git_repo_url && (
-                <div className="bg-white rounded-xl border border-slate-200 p-4 flex items-center gap-3"><GitBranch size={18} className="text-slate-500" />
-                  <a href={project.git_repo_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline flex-1">{project.git_repo_url}</a></div>)}
-              {documents.length === 0 ? (<div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><FolderOpen size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No documents indexed.</p></div>) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{documents.map(doc => (
-                  <div key={doc.id} className="bg-white rounded-xl border border-slate-200 p-4">
-                    <p className="text-sm font-semibold text-slate-800">{doc.name}</p>
-                    <p className="text-xs text-slate-500 capitalize">{doc.document_type.replace('_', ' ')}</p>
-                    <div className="flex items-center gap-2 mt-2"><span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">{doc.folder}</span>
-                      {doc.url && <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">Open</a>}</div>
-                  </div>))}</div>)}
-            </div>)}
-
-          {/* RISKS */}
-          {activeSection === 'risks' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Risks & Issues</h3>
+            ) : (
               <div className="space-y-3">
-                {risks.length === 0 ? (<div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><ShieldAlert size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No risks registered.</p></div>) : (
-                  risks.map(r => (
-                    <div key={r.id} className="bg-white rounded-xl border border-slate-200 p-4">
-                      <p className="text-sm font-semibold text-slate-800">{r.risk}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">Prob: {r.probability}</span>
-                        <span className="text-xs px-1.5 py-0.5 rounded-full bg-red-100 text-red-700">Impact: {r.impact}</span>
-                        <span className="text-xs text-slate-500">{r.status}</span>
+                {versions.map(v => (
+                  <div key={v.id} className="bg-white rounded-xl border border-slate-200 p-5">
+                    <div className="flex items-start justify-between mb-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <GitBranch size={16} className="text-primary" />
+                          <p className="text-sm font-semibold text-slate-800">{v.version_label}</p>
+                          {v.is_active && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">Active</span>}
+                        </div>
+                        {v.description && <p className="text-xs text-slate-500 mt-1">{v.description}</p>}
                       </div>
-                      {r.mitigation && <p className="text-xs text-slate-500 mt-2">Mitigation: {r.mitigation}</p>}
-                    </div>)))}
-              </div>
-              {dependencies.length > 0 && (
-                <div className="pt-3 border-t border-slate-200"><p className="text-sm font-semibold text-slate-700 mb-2">Dependencies</p>
-                  <div className="space-y-2">{dependencies.map(d => (
-                    <div key={d.id} className="bg-white rounded-xl border border-slate-200 p-3 flex items-center gap-3">
-                      <Network size={15} className="text-slate-400" /><p className="text-sm text-slate-700 flex-1">{d.description}</p>
-                      <span className="text-xs text-slate-500 capitalize">{d.dependency_type}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded-full ${d.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{d.status}</span>
-                    </div>))}</div></div>)}
-            </div>)}
-
-          {/* CHANGE REQUESTS */}
-          {activeSection === 'changes' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-bold text-slate-900">Change Requests</h3>
-                {canManage && !isArchived && (
-                  <button onClick={() => setShowChangeRequest(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">
-                    <Plus size={14} /> New Change Request
-                  </button>)}
-              </div>
-              {changeRequests.length === 0 ? (<div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><GitCommit size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No change requests.</p></div>) : (
-                <div className="space-y-2">{changeRequests.map(cr => (
-                  <div key={cr.id} className="bg-white rounded-xl border border-slate-200 p-4">
-                    <div className="flex items-start justify-between">
-                      <div><p className="text-sm font-semibold text-slate-800">{cr.title}</p><p className="text-xs text-slate-500 mt-1">{cr.description}</p></div>
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cr.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : cr.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'}`}>{cr.status}</span>
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${v.status === 'active' ? 'bg-emerald-100 text-emerald-700' : v.status === 'completed' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {v.status.replace('_', ' ')}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-xs px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 capitalize">{cr.change_type}</span>
+                    {v.progress != null && (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-slate-400">Progress</span>
+                          <span className="text-xs font-semibold text-slate-600">{v.progress}%</span>
+                        </div>
+                        <div className="w-full h-2 bg-slate-200 rounded-full">
+                          <div className="h-2 bg-primary rounded-full transition-all" style={{ width: `${v.progress}%` }} />
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center gap-2">
+                      <button onClick={() => setActiveVersionId(activeVersionId === v.id ? null : v.id)} className="text-xs font-medium px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        {activeVersionId === v.id ? 'Filtering tasks' : 'Filter tasks'}
+                      </button>
+                      <span className="text-xs text-slate-400">{tasks.filter(t => t.version_id === v.id).length} tasks</span>
                     </div>
-                    {cr.impact_analysis && <p className="text-xs text-slate-500 mt-2"><strong>Impact:</strong> {cr.impact_analysis}</p>}
-                    {canManage && cr.status === 'pending' && (
-                      <div className="flex gap-2 mt-3">
-                        <button onClick={() => approveChangeRequest(cr.id, cr.title)} className="px-3 py-1 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Approve</button>
-                      </div>)}
-                  </div>))}</div>)}
-            </div>)}
-
-          {/* COMMUNICATIONS */}
-          {activeSection === 'communications' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Communications</h3>
-              <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-                <div><p className="text-xs text-slate-400">Channels</p>
-                  <div className="flex flex-wrap gap-1.5 mt-1">{(project.communication_channels || []).map(ch => (
-                    <span key={ch} className="px-2.5 py-1 text-xs font-medium bg-blue-50 text-blue-700 rounded-full">{ch}</span>))}</div></div>
-                <div className="grid grid-cols-2 gap-3 text-sm"><div><p className="text-xs text-slate-400">Meeting Frequency</p><p className="text-slate-700 capitalize">{project.meeting_frequency}</p></div></div>
-                {project.escalation_contacts && project.escalation_contacts.length > 0 && (
-                  <div><p className="text-xs text-slate-400">Escalation Contacts</p><p className="text-sm text-slate-700">{project.escalation_contacts.join(', ')}</p></div>)}
+                  </div>
+                ))}
               </div>
-            </div>)}
+            )}
+          </div>
+        )}
 
-          {/* ACTIVITY LOG */}
-          {activeSection === 'activity' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Activity Log</h3>
-              {activity.length === 0 ? (<div className="bg-white rounded-xl border border-slate-200 p-8 text-center"><Activity size={32} className="text-slate-300 mx-auto mb-2" /><p className="text-sm text-slate-500">No activity recorded.</p></div>) : (
-                <div className="space-y-2">{activity.map(a => (
-                  <div key={a.id} className="bg-white rounded-xl border border-slate-200 p-3 flex items-start gap-3">
-                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0"><Activity size={14} className="text-primary" /></div>
-                    <div className="flex-1"><p className="text-sm font-medium text-slate-700">{a.description}</p>
-                      <p className="text-xs text-slate-400">{a.actor?.full_name || 'System'} · {new Date(a.created_at).toLocaleString()}</p></div>
-                  </div>))}</div>)}
-            </div>)}
-
-          {/* ANALYTICS */}
-          {activeSection === 'analytics' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Reports & Analytics</h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-2xl font-bold text-slate-800">{tasks.length}</p><p className="text-xs text-slate-400">Total Tasks</p></div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-2xl font-bold text-emerald-600">{tasks.filter(t => t.status === 'done').length}</p><p className="text-xs text-slate-400">Completed</p></div>
-                <div className="bg-white rounded-xl border border-slate-200 p-4"><p className="text-2xl font-bold text-blue-600">{phases.length}</p><p className="text-xs text-slate-400">Phases</p></div>
+        {/* TEAM */}
+        {activeSection === 'team' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Team & Assignments</h3>
+              {canManage && !isArchived && availableMembers.length > 0 && (
+                <button onClick={() => setShowMemberModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">
+                  <Plus size={14} /> Assign Member
+                </button>
+              )}
+            </div>
+            {assignments.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <Users size={32} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No team members assigned yet.</p>
               </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-5"><p className="text-sm font-semibold text-slate-700 mb-2">Requirements Checklist</p>
-                {checklist.length === 0 ? (<p className="text-sm text-slate-400">No checklist items.</p>) : (
-                  <div className="space-y-1.5">{checklist.map(c => (
-                    <button key={c.id} onClick={() => toggleChecklistItem(c.id, c.is_done, c.item)} disabled={isArchived} className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 text-left disabled:opacity-50">
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center ${c.is_done ? 'bg-emerald-500 border-emerald-500' : 'border-slate-300'}`}>{c.is_done && <CheckCircle size={10} className="text-white" />}</div>
-                      <span className={`text-sm ${c.is_done ? 'text-slate-400 line-through' : 'text-slate-700'}`}>{c.item}</span>
-                    </button>))}</div>)}
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {assignments.map(a => {
+                  const member = members.find(m => m.id === a.member_id);
+                  return (
+                    <div key={a.id} className="flex items-center gap-3 p-4">
+                      <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-xs font-bold">{member?.full_name?.split(' ').map(n => n[0]).join('').slice(0, 2) || '?'}</span>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">{member?.full_name || 'Unknown'}</p>
+                        <p className="text-xs text-slate-400 capitalize">{a.role_in_project}</p>
+                      </div>
+                      {canManage && !isArchived && (
+                        <button onClick={() => removeMember(a.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600">
+                          <Trash2 size={14} />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            </div>)}
+            )}
+          </div>
+        )}
 
-          {/* ARCHIVE */}
-          {activeSection === 'archive' && (
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-900">Archive & Close Project</h3>
-              {isArchived ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-5">
-                  <div className="flex items-center gap-3 mb-2"><Archive size={20} className="text-slate-500" /><p className="text-sm font-semibold text-slate-700">This project is already archived</p></div>
-                  <p className="text-sm text-slate-500">Status: <span className={`font-semibold px-2 py-0.5 rounded-full ${statusColors[project.status]}`}>{project.status}</span></p>
-                  {canManage && (
-                    <button onClick={() => { supabase.from('projects').update({ status: 'active' }).eq('id', project.id).then(() => { logAndReload('project_reopened', `Project reopened by ${profile?.full_name}`); toast.success('Project reopened'); }); }}
-                      className="mt-3 px-4 py-2 text-sm font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700">Reopen Project</button>)}
+        {/* RISKS */}
+        {activeSection === 'risks' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">Risks & Issues</h3>
+              {canManage && !isArchived && (
+                <button onClick={() => setShowRiskModal(true)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold bg-primary text-white rounded-lg hover:bg-primary/90">
+                  <Plus size={14} /> Add Risk
+                </button>
+              )}
+            </div>
+            {risks.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <ShieldAlert size={32} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No risks identified yet.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {risks.map(r => (
+                  <div key={r.id} className="bg-white rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-slate-800">{r.risk}</p>
+                        {r.mitigation && <p className="text-xs text-slate-500 mt-1">Mitigation: {r.mitigation}</p>}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${r.status === 'open' ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>{r.status}</span>
+                        <span className="text-xs text-slate-400">P: {r.probability} / I: {r.impact}</span>
+                        {canManage && !isArchived && (
+                          <button onClick={() => deleteRisk(r.id, r.risk)} className="p-1 rounded hover:bg-red-50 text-slate-400 hover:text-red-600"><Trash2 size={12} /></button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ACTIVITY */}
+        {activeSection === 'activity' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">Activity Timeline</h3>
+            {activity.length === 0 ? (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <Activity size={32} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No activity recorded yet.</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {activity.map(a => {
+                  const actor = members.find(m => m.id === a.actor_id);
+                  return (
+                    <div key={a.id} className="flex items-start gap-3 p-4">
+                      <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center flex-shrink-0">
+                        <Activity size={14} className="text-slate-500" />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm text-slate-700">{a.description || a.action}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {actor?.full_name || 'System'} · {new Date(a.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* DOCUMENTS */}
+        {activeSection === 'documents' && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">Documents & Links</h3>
+            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+              <FolderOpen size={32} className="text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">Document management will appear here. Link repositories, wikis, and files related to this project.</p>
+            </div>
+          </div>
+        )}
+
+        {/* SETTINGS */}
+        {activeSection === 'settings' && canManage && (
+          <div className="space-y-4">
+            <h3 className="text-lg font-bold text-slate-900">Project Settings</h3>
+            <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Project Name *</label>
+                <input value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                <textarea value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} rows={3}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                  <select value={editForm.status} onChange={e => setEditForm({ ...editForm, status: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                  </select>
                 </div>
-              ) : (
-                <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-                  <p className="text-sm text-slate-600">Closing a project will archive it, notify all team members, and log the action. Archived projects are moved out of the active projects list.</p>
-                  {canManage && (
-                    <div className="flex gap-3">
-                      <button onClick={() => setShowCloseConfirm('completed')} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">
-                        <CheckCircle size={16} /> Mark as Completed
-                      </button>
-                      <button onClick={() => setShowCloseConfirm('cancelled')} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700">
-                        <X size={16} /> Cancel Project
-                      </button>
-                    </div>)}
-                </div>)}
-            </div>)}
-        </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
+                  <select value={editForm.priority} onChange={e => setEditForm({ ...editForm, priority: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Budget ($)</label>
+                  <input type="number" value={editForm.budget} onChange={e => setEditForm({ ...editForm, budget: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Progress (%)</label>
+                  <input type="number" min="0" max="100" value={editForm.progress} onChange={e => setEditForm({ ...editForm, progress: Number(e.target.value) })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+                  <input type="date" value={editForm.start_date} onChange={e => setEditForm({ ...editForm, start_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+                  <input type="date" value={editForm.end_date} onChange={e => setEditForm({ ...editForm, end_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveProject} disabled={savingProject}
+                  className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                  {savingProject ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Save Changes'}
+                </button>
+                {!isArchived && (
+                  <button onClick={archiveProject} className="px-4 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50 text-slate-600 flex items-center gap-1.5">
+                    <Archive size={14} /> Archive
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeSection === 'settings' && !canManage && (
+          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+            <p className="text-sm text-slate-500">You need manager or admin access to edit project settings.</p>
+          </div>
+        )}
       </div>
 
-      {/* Close Confirmation Modal */}
-      {showCloseConfirm && (
+      {/* Task Modal */}
+      {showTaskModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${showCloseConfirm === 'completed' ? 'bg-emerald-100' : 'bg-red-100'}`}>
-                {showCloseConfirm === 'completed' ? <CheckCircle size={20} className="text-emerald-600" /> : <AlertCircle size={20} className="text-red-600" />}
-              </div>
-              <div><h3 className="text-base font-bold text-slate-900">{showCloseConfirm === 'completed' ? 'Complete Project' : 'Cancel Project'}</h3>
-                <p className="text-xs text-slate-500">This action will archive the project</p></div>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-slate-900">{editingTask ? 'Edit Task' : 'New Task'}</h3>
+              <button onClick={() => { setShowTaskModal(false); setEditingTask(null); }} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={16} /></button>
             </div>
-            <p className="text-sm text-slate-600 mb-4">
-              {showCloseConfirm === 'completed'
-                ? 'This will mark the project as completed, set progress to 100%, notify all team members, and move it to the archived section. Are you sure?'
-                : 'This will cancel the project, notify all team members, and move it to the archived section. This cannot be undone from the active list. Are you sure?'}
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setShowCloseConfirm(null)} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-              <button onClick={() => closeProject(showCloseConfirm)} disabled={closing}
-                className={`flex-1 py-2 text-sm font-semibold text-white rounded-lg disabled:opacity-60 ${showCloseConfirm === 'completed' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                {closing ? <Loader2 size={14} className="animate-spin mx-auto" /> : showCloseConfirm === 'completed' ? 'Complete & Archive' : 'Cancel & Archive'}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Title *</label>
+                <input value={taskForm.title} onChange={e => setTaskForm({ ...taskForm, title: e.target.value })} placeholder="Task title"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                <textarea value={taskForm.description} onChange={e => setTaskForm({ ...taskForm, description: e.target.value })} rows={2}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                  <select value={taskForm.status} onChange={e => setTaskForm({ ...taskForm, status: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['todo','in_progress','review','done','blocked'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Priority</label>
+                  <select value={taskForm.priority} onChange={e => setTaskForm({ ...taskForm, priority: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Assign To</label>
+                  <select value={taskForm.assigned_to} onChange={e => setTaskForm({ ...taskForm, assigned_to: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    <option value="">Unassigned</option>
+                    {members.map(m => <option key={m.id} value={m.id}>{m.full_name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Due Date</label>
+                  <input type="date" value={taskForm.due_date} onChange={e => setTaskForm({ ...taskForm, due_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Estimated Hours</label>
+                <input type="number" value={taskForm.estimated_hours} onChange={e => setTaskForm({ ...taskForm, estimated_hours: e.target.value })} placeholder="0"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg" />
+              </div>
+              {activeVersionId && (
+                <p className="text-xs text-slate-400">This task will be added to version: {versions.find(v => v.id === activeVersionId)?.version_label}</p>
+              )}
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => { setShowTaskModal(false); setEditingTask(null); }} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={saveTask} disabled={savingTask || !taskForm.title.trim()} className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                {savingTask ? <Loader2 size={14} className="animate-spin mx-auto" /> : editingTask ? 'Save Changes' : 'Create Task'}
               </button>
             </div>
           </div>
-        </div>)}
+        </div>
+      )}
 
-      {/* Change Request Modal */}
-      {showChangeRequest && (
+      {/* Version Modal */}
+      {showVersionModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5"><h3 className="text-base font-bold text-slate-900">New Change Request</h3>
-              <button onClick={() => setShowChangeRequest(false)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={16} /></button></div>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-slate-900">New Project Version</h3>
+              <button onClick={() => setShowVersionModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+            </div>
             <div className="space-y-3">
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Title *</label>
-                <input value={crForm.title} onChange={e => setCrForm({ ...crForm, title: e.target.value })} placeholder="e.g. Add multi-language support"
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
-                <select value={crForm.change_type} onChange={e => setCrForm({ ...crForm, change_type: e.target.value })}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Version Label *</label>
+                <input value={versionForm.version_label} onChange={e => setVersionForm({ ...versionForm, version_label: e.target.value })} placeholder="e.g. v2.0, Phase 2, Alternative"
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+                <textarea value={versionForm.description} onChange={e => setVersionForm({ ...versionForm, description: e.target.value })} rows={3}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+                <select value={versionForm.status} onChange={e => setVersionForm({ ...versionForm, status: e.target.value })}
                   className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
-                  {['scope','timeline','cost','resource','other'].map(t => <option key={t} value={t}>{t}</option>)}
-                </select></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
-                <textarea value={crForm.description} onChange={e => setCrForm({ ...crForm, description: e.target.value })} rows={3}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" /></div>
-              <div><label className="block text-xs font-medium text-slate-600 mb-1">Impact Analysis</label>
-                <textarea value={crForm.impact_analysis} onChange={e => setCrForm({ ...crForm, impact_analysis: e.target.value })} rows={2}
-                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" /></div>
+                  {['planning','active','on_hold','completed'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+                </select>
+              </div>
             </div>
             <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowChangeRequest(false)} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
-              <button onClick={createChangeRequest} disabled={!crForm.title.trim()} className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">Submit Request</button>
+              <button onClick={() => setShowVersionModal(false)} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={createVersion} disabled={savingVersion || !versionForm.version_label.trim()} className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                {savingVersion ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Create Version'}
+              </button>
             </div>
           </div>
-        </div>)}
+        </div>
+      )}
+
+      {/* Risk Modal */}
+      {showRiskModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-slate-900">Add Risk</h3>
+              <button onClick={() => setShowRiskModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Risk Description *</label>
+                <input value={riskForm.risk} onChange={e => setRiskForm({ ...riskForm, risk: e.target.value })} placeholder="Describe the risk..."
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Probability</label>
+                  <select value={riskForm.probability} onChange={e => setRiskForm({ ...riskForm, probability: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Impact</label>
+                  <select value={riskForm.impact} onChange={e => setRiskForm({ ...riskForm, impact: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                    {['low','medium','high','critical'].map(i => <option key={i} value={i}>{i}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mitigation Plan</label>
+                <textarea value={riskForm.mitigation} onChange={e => setRiskForm({ ...riskForm, mitigation: e.target.value })} rows={2}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg resize-none outline-none focus:ring-2 focus:ring-primary" />
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowRiskModal(false)} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={saveRisk} disabled={savingRisk || !riskForm.risk.trim()} className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                {savingRisk ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Add Risk'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Member Modal */}
+      {showMemberModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-base font-bold text-slate-900">Assign Team Member</h3>
+              <button onClick={() => setShowMemberModal(false)} className="p-1.5 rounded-lg hover:bg-slate-100"><X size={16} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Team Member *</label>
+                <select value={memberForm.member_id} onChange={e => setMemberForm({ ...memberForm, member_id: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                  <option value="">Select a member...</option>
+                  {availableMembers.map(m => <option key={m.id} value={m.id}>{m.full_name} ({m.role.replace('_', ' ')})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Role in Project</label>
+                <select value={memberForm.role_in_project} onChange={e => setMemberForm({ ...memberForm, role_in_project: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white">
+                  {['lead','member','contributor','observer'].map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setShowMemberModal(false)} className="flex-1 py-2 text-sm font-medium border border-slate-300 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={saveMember} disabled={savingMember || !memberForm.member_id} className="flex-1 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 disabled:opacity-60">
+                {savingMember ? <Loader2 size={14} className="animate-spin mx-auto" /> : 'Assign Member'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

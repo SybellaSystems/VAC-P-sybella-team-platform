@@ -51,8 +51,11 @@ export default function MessagesPage() {
   }, [messages]);
 
   const loadChannels = async () => {
-    const { data } = await supabase.from('channels').select('*').order('name');
-    const ch = (data as Channel[]) || [];
+    const { data } = await supabase
+      .from('channels')
+      .select('*, project:projects(id, name)')
+      .order('name');
+    const ch = (data as (Channel & { project?: { id: string; name: string } | null })[]) || [];
     setChannels(ch);
     if (ch.length > 0 && !activeChannel) setActiveChannel(ch[0]);
   };

@@ -45,7 +45,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <Menu size={20} />
         </button>
-        {children}
+        <WeeklyReportGuard>{children}</WeeklyReportGuard>
         <CheckInPrompt />
         <CelebrationOverlay />
       </div>
