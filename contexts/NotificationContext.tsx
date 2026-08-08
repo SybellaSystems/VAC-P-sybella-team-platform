@@ -78,17 +78,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   const savePreferences = async (nextPreferences: NotificationPreferences) => {
     persistPreferences(nextPreferences);
-
-    if (profile?.id) {
-      try {
-        await supabase
-          .from('profiles')
-          .update({ notification_preferences: nextPreferences })
-          .eq('id', profile.id);
-      } catch {
-        // ignore server update failures, local preferences remain available
-      }
-    }
   };
 
   const refreshCounts = async () => {
@@ -136,14 +125,6 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
   useEffect(() => {
     const loadPreferences = () => {
-      if (profile?.notification_preferences) {
-        setPreferencesState({
-          ...DEFAULT_PREFERENCES,
-          ...profile.notification_preferences,
-        });
-        return;
-      }
-
       if (typeof window === 'undefined') return;
       const persisted = window.localStorage.getItem(PREFERENCE_STORAGE_KEY);
       if (!persisted) return;

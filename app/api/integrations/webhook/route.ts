@@ -90,7 +90,6 @@ export async function POST(request: Request) {
       last_synced_at: pushed_at,
       // Keep metadata updates for backward compatibility
       metadata: { ...(integrationRow.metadata || {}), ...(metadata || {}), pushed: true },
-
     })
     .eq('id', integrationRow.id);
 
@@ -112,16 +111,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: payloadErr.message }, { status: 500 });
   }
 
+  const payloadSummary = JSON.stringify(typeof payload === 'object' ? Object.keys(payload || {}) : String(payload).slice(0, 200));
 
   await logAudit({
-    event_type: 'integrations.webhook_push',
     entity_type: 'project',
     entity_id: project_id,
     action: 'push',
-    details: `integration_id=${integrationRow.id} platform=${integrationRow.platform}`,
-    metadata: { payload_summary: typeof payload === 'object' ? Object.keys(payload || {}) : String(payload).slice(0, 200) },
+    details: `integration_id=${integrationRow.id} platform=${integrationRow.platform} payload_summary=${payloadSummary}`,
   }).catch(() => undefined);
 
   return NextResponse.json({ ok: true, integration_id: integrationRow.id, pushed_at });
 }
-

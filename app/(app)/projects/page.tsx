@@ -1,185 +1,355 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { TopBar } from '@/components/layout/TopBar';
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Project } from '@/lib/database.types';
-import { Plus, Search, Calendar, DollarSign, ChevronRight, Kanban, List, X, Sparkles, Archive } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { TopBar } from '@/components/layout/TopBar';
+import {
+  Plus, Search, LayoutGrid, List, Calendar, DollarSign,
+  Users, TrendingUp, Building2, Tag, Briefcase, Filter,
+  ChevronRight, Loader as Loader2, AlertCircle,
+} from 'lucide-react';
 
-const statusColors: Record<string, string> = {
-  planning: 'bg-blue-100 text-blue-700', active: 'bg-emerald-100 text-emerald-700',
-  on_hold: 'bg-amber-100 text-amber-700', completed: 'bg-gray-100 text-gray-600', cancelled: 'bg-red-100 text-red-600',
+interface ProjectRow {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  progress: number;
+  budget: number;
+  spent: number;
+  start_date: string | null;
+  end_date: string | null;
+  created_at: string;
+  project_code: string | null;
+  project_type: string | null;
+  department: string | null;
+  category: string | null;
+  tags: string[] | null;
+  expected_revenue: number | null;
+  customer_price: number | null;
+  customer_name?: string | null;
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  planning:    'bg-blue-100 text-blue-700',
+  active:      'bg-emerald-100 text-emerald-700',
+  on_hold:     'bg-amber-100 text-amber-700',
+  completed:   'bg-slate-100 text-slate-600',
+  cancelled:   'bg-red-100 text-red-600',
 };
-const priorityColors: Record<string, string> = { low: 'text-emerald-600', medium: 'text-amber-600', high: 'text-orange-600', critical: 'text-red-600' };
-const emptyForm = (): Partial<Project> => ({ name: '', description: '', status: 'planning', priority: 'medium', budget: 0, spent: 0, progress: 0 });
+
+const PRIORITY_COLORS: Record<string, string> = {
+  low:      'bg-slate-100 text-slate-500',
+  medium:   'bg-yellow-100 text-yellow-700',
+  high:     'bg-orange-100 text-orange-700',
+  critical: 'bg-red-100 text-red-700',
+};
+
+const STATUS_OPTIONS = ['all', 'planning', 'active', 'on_hold', 'completed', 'cancelled'];
 
 export default function ProjectsPage() {
-  const { profile } = useAuth();
   const router = useRouter();
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { profile } = useAuth();
+  const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [showModal, setShowModal] = useState(false);
-  const [form, setForm] = useState(emptyForm());
-  const [saving, setSaving] = useState(false);
-  const [showArchived, setShowArchived] = useState(false);
 
-  const canManage = ['admin', 'director', 'manager'].includes(profile?.role || '');
+  const fetchProjects = useCallback(async () => {
+    if (!profile) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { data, error: err } = await supabase
+        .from('projects')
+        .select(`
+          id, name, description, status, priority, progress,
+          budget, spent, start_date, end_date, created_at,
+          project_code, project_type, department, category,
+          tags, expected_revenue, customer_price,
+          customers (name)
+        `)
+        .order('created_at', { ascending: false });
 
-  useEffect(() => { loadProjects(); }, []);
+      if (err) throw err;
 
-  const loadProjects = async () => {
-    const { data } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
-    setProjects((data as Project[]) || []);
-    setLoading(false);
-  };
+      const rows: ProjectRow[] = (data || []).map((p: any) => ({
+        ...p,
+        customer_name: p.customers?.name ?? null,
+      }));
+      setProjects(rows);
+    } catch (e: any) {
+      setError(e.message || 'Failed to load projects');
+    } finally {
+      setLoading(false);
+    }
+  }, [profile]);
 
-  const handleCreateProject = async () => {
-    if (!form.name?.trim()) return;
-    setSaving(true);
-    await supabase.from('projects').insert({ ...form, created_by: profile?.id });
-    await loadProjects();
-    setSaving(false); setShowModal(false); setForm(emptyForm());
-  };
+  useEffect(() => { fetchProjects(); }, [fetchProjects]);
 
-  const activeProjects = projects.filter(p => p.status !== 'completed' && p.status !== 'cancelled');
-  const archivedProjects = projects.filter(p => p.status === 'completed' || p.status === 'cancelled');
-  const displayProjects = showArchived ? archivedProjects : activeProjects;
-
-  const filtered = displayProjects.filter(p => {
-    const matchSearch = p.name.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = filterStatus === 'all' || p.status === filterStatus;
-    return matchSearch && matchStatus;
+  const filtered = projects.filter(p => {
+    const matchesSearch =
+      !search ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.project_code || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.department || '').toLowerCase().includes(search.toLowerCase()) ||
+      (p.customer_name || '').toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
 
+  const stats = {
+    total: projects.length,
+    active: projects.filter(p => p.status === 'active').length,
+    totalBudget: projects.reduce((s, p) => s + (p.budget || 0), 0),
+    totalRevenue: projects.reduce((s, p) => s + (p.expected_revenue || p.customer_price || 0), 0),
+  };
+
   return (
-    <div>
-      <TopBar title="Projects" subtitle={`${activeProjects.length} active · ${archivedProjects.length} archived`} />
-      <div className="p-4 sm:p-6 space-y-5">
-        <div className="flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex gap-3 flex-wrap">
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search projects..." className="pl-9 pr-4 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary w-52" />
-            </div>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary">
-              <option value="all">All Status</option>
-              {['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}
+    <div className="flex flex-col h-full">
+      <TopBar title="Projects" subtitle={`${stats.total} projects`} />
+
+      <div className="flex-1 overflow-auto p-4 sm:p-6 space-y-5">
+        {/* Summary stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <Briefcase size={16} className="text-blue-500 mb-2" />
+            <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
+            <p className="text-xs text-slate-400">Total Projects</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <TrendingUp size={16} className="text-emerald-500 mb-2" />
+            <p className="text-2xl font-bold text-slate-800">{stats.active}</p>
+            <p className="text-xs text-slate-400">Active</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <DollarSign size={16} className="text-amber-500 mb-2" />
+            <p className="text-2xl font-bold text-slate-800">${(stats.totalBudget / 1000).toFixed(0)}K</p>
+            <p className="text-xs text-slate-400">Total Budget</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <TrendingUp size={16} className="text-primary mb-2" />
+            <p className="text-2xl font-bold text-slate-800">${(stats.totalRevenue / 1000).toFixed(0)}K</p>
+            <p className="text-xs text-slate-400">Expected Revenue</p>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-48">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by name, code, department…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/30"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Filter size={14} className="text-slate-400" />
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className="text-sm border border-slate-200 rounded-lg px-2 py-2 focus:outline-none focus:ring-2 focus:ring-primary/30 bg-white"
+            >
+              {STATUS_OPTIONS.map(s => (
+                <option key={s} value={s}>{s === 'all' ? 'All Statuses' : s.replace('_', ' ')}</option>
+              ))}
             </select>
-            <div className="flex rounded-lg border border-input overflow-hidden">
-              <button onClick={() => setViewMode('grid')} className={`px-3 py-2 ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-white hover:bg-muted'} transition-colors`}><Kanban size={15} /></button>
-              <button onClick={() => setViewMode('list')} className={`px-3 py-2 ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white hover:bg-muted'} transition-colors`}><List size={15} /></button>
-            </div>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowArchived(!showArchived)} className={`flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${showArchived ? 'bg-slate-700 text-white' : 'border border-input bg-white text-foreground hover:bg-muted'}`}>
-              <Archive size={16} /> {showArchived ? 'Show Active' : 'Archived'}
+
+          <div className="flex border border-slate-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setViewMode('grid')}
+              className={`p-2 ${viewMode === 'grid' ? 'bg-primary text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+            >
+              <LayoutGrid size={15} />
             </button>
-            {canManage && !showArchived && (
-              <>
-                <button onClick={() => router.push('/projects/new')} className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 transition-colors">
-                  <Sparkles size={16} /> Creation Wizard
-                </button>
-                <button onClick={() => setShowModal(true)} className="flex items-center gap-2 px-4 py-2 border border-input bg-white text-foreground text-sm font-semibold rounded-lg hover:bg-muted transition-colors">
-                  <Plus size={16} /> Quick Create
-                </button>
-              </>)}
+            <button
+              onClick={() => setViewMode('list')}
+              className={`p-2 ${viewMode === 'list' ? 'bg-primary text-white' : 'bg-white text-slate-400 hover:bg-slate-50'}`}
+            >
+              <List size={15} />
+            </button>
           </div>
+
+          <button
+            onClick={() => router.push('/projects/new')}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors shadow-sm"
+          >
+            <Plus size={15} /> New Project
+          </button>
         </div>
 
-        {/* Status Summary */}
-        <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 sm:gap-3">
-          {['planning','active','on_hold','completed','cancelled'].map(s => {
-            const count = projects.filter(p => p.status === s).length;
-            return (
-              <button key={s} onClick={() => { setFilterStatus(s === filterStatus ? 'all' : s); if (s === 'completed' || s === 'cancelled') setShowArchived(true); else setShowArchived(false); }}
-                className={`bg-white rounded-xl border p-3 text-center transition-all ${filterStatus === s ? 'border-primary ring-1 ring-primary' : 'border-border hover:border-primary/40'}`}>
-                <p className="text-lg font-bold text-foreground">{count}</p><p className="text-[10px] text-muted-foreground capitalize mt-0.5">{s.replace('_',' ')}</p>
-              </button>);})}
-        </div>
-
-        {/* Section header */}
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-slate-700">{showArchived ? 'Archived Projects' : 'Active Projects'}</h2>
-          <span className="text-xs text-slate-400">({filtered.length})</span>
-        </div>
-
-        {/* Project Grid/List */}
+        {/* Content */}
         {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (<div key={i} className="bg-white rounded-xl border border-border p-5 animate-pulse"><div className="h-4 bg-muted rounded w-3/4 mb-3" /><div className="h-3 bg-muted rounded w-full mb-2" /><div className="h-3 bg-muted rounded w-2/3" /></div>))}
-          </div>) : filtered.length === 0 ? (
-          <div className="bg-white rounded-xl border border-border p-12 text-center">
-            <Kanban size={40} className="text-muted-foreground mx-auto mb-3 opacity-40" />
-            <p className="text-muted-foreground">{showArchived ? 'No archived projects' : 'No active projects found'}</p>
-            {canManage && !showArchived && (<button onClick={() => router.push('/projects/new')} className="mt-3 text-sm text-primary hover:underline">Start the creation wizard</button>)}
-          </div>) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filtered.map(project => (
-              <div key={project.id} className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow cursor-pointer" onClick={() => router.push(`/projects/${project.id}`)}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1 min-w-0"><h3 className="font-semibold text-foreground text-sm truncate">{project.name}</h3><p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{project.description || 'No description'}</p></div>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ml-2 flex-shrink-0 ${statusColors[project.status]}`}>{project.status.replace('_',' ')}</span>
-                </div>
-                <div className="mb-3"><div className="flex justify-between text-xs mb-1"><span className="text-muted-foreground">Progress</span><span className="font-semibold text-foreground">{project.progress}%</span></div>
-                  <div className="w-full h-1.5 bg-muted rounded-full"><div className="h-1.5 bg-primary rounded-full transition-all" style={{ width: `${project.progress}%` }} /></div></div>
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="flex items-center gap-1.5 text-muted-foreground"><DollarSign size={11} /><span>Budget: ${(project.budget / 1000).toFixed(0)}K</span></div>
-                  {project.end_date && <div className="flex items-center gap-1.5 text-muted-foreground"><Calendar size={11} /><span>{new Date(project.end_date).toLocaleDateString()}</span></div>}
-                  <div className={`text-xs font-medium ${priorityColors[project.priority]}`}>{project.priority} priority</div>
-                </div>
-              </div>))}
-          </div>) : (
-          <div className="bg-white rounded-xl border border-border divide-y divide-border">
-            {filtered.map(project => (
-              <div key={project.id} className="flex items-center gap-4 px-5 py-4 hover:bg-muted/30 cursor-pointer" onClick={() => router.push(`/projects/${project.id}`)}>
-                <div className="flex-1 min-w-0"><p className="font-semibold text-foreground text-sm">{project.name}</p><p className="text-xs text-muted-foreground truncate">{project.description || 'No description'}</p></div>
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0 ${statusColors[project.status]}`}>{project.status.replace('_',' ')}</span>
-                <div className="text-right text-xs text-muted-foreground hidden md:block w-24"><p>{project.progress}% done</p><div className="w-full h-1 bg-muted rounded-full mt-1"><div className="h-1 bg-primary rounded-full" style={{ width: `${project.progress}%` }} /></div></div>
-                <span className={`text-xs font-medium hidden lg:block ${priorityColors[project.priority]}`}>{project.priority}</span>
-                <ChevronRight size={15} className="text-muted-foreground flex-shrink-0" />
-              </div>))}
-          </div>)}
+          <div className="flex items-center justify-center py-16">
+            <Loader2 size={24} className="animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl p-4 text-sm">
+            <AlertCircle size={16} /> {error}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
+            <Briefcase size={36} className="text-slate-200 mx-auto mb-3" />
+            <p className="text-sm font-semibold text-slate-500 mb-1">No projects found</p>
+            <p className="text-xs text-slate-400 mb-4">Try adjusting your search or filters, or create a new project.</p>
+            <button
+              onClick={() => router.push('/projects/new')}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <Plus size={14} /> Create Project
+            </button>
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+            {filtered.map(p => (
+              <ProjectCard key={p.id} project={p} onClick={() => router.push(`/projects/${p.id}`)} />
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-slate-200 divide-y divide-slate-100">
+            {filtered.map(p => (
+              <ProjectListRow key={p.id} project={p} onClick={() => router.push(`/projects/${p.id}`)} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-        {/* Archived banner */}
-        {showArchived && archivedProjects.length > 0 && (
-          <div className="p-4 bg-slate-100 border border-slate-300 rounded-lg flex items-center gap-2">
-            <Archive size={16} className="text-slate-500" />
-            <p className="text-sm text-slate-600">These projects are archived. They are no longer in the active list and can only be viewed or reopened from their detail page.</p>
-          </div>)}
+function ProjectCard({ project: p, onClick }: { project: ProjectRow; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      className="bg-white border border-slate-200 rounded-xl p-5 cursor-pointer hover:shadow-md hover:border-primary/30 transition-all group"
+    >
+      {/* Header */}
+      <div className="flex items-start justify-between gap-2 mb-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[p.status] || 'bg-slate-100 text-slate-500'}`}>
+              {p.status.replace('_', ' ')}
+            </span>
+            <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${PRIORITY_COLORS[p.priority] || 'bg-slate-100 text-slate-500'}`}>
+              {p.priority}
+            </span>
+          </div>
+          <h3 className="text-sm font-bold text-slate-900 truncate group-hover:text-primary transition-colors">{p.name}</h3>
+          {p.project_code && <p className="text-[10px] text-slate-400 font-mono mt-0.5">{p.project_code}</p>}
+        </div>
+        <ChevronRight size={14} className="text-slate-300 group-hover:text-primary flex-shrink-0 mt-1 transition-colors" />
       </div>
 
-      {/* Quick Create Modal */}
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5"><h2 className="text-base font-bold text-foreground">Quick Create Project</h2><button onClick={() => setShowModal(false)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button></div>
-            <div className="space-y-3">
-              <div><label className="block text-xs font-medium text-muted-foreground mb-1">Project Name *</label><input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Customer Portal v2" className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-              <div><label className="block text-xs font-medium text-muted-foreground mb-1">Description</label><textarea value={form.description || ''} onChange={e => setForm({ ...form, description: e.target.value })} rows={2} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Status</label><select value={form.status || 'planning'} onChange={e => setForm({ ...form, status: e.target.value as Project['status'] })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">{['planning','active','on_hold','completed','cancelled'].map(s => <option key={s} value={s}>{s.replace('_',' ')}</option>)}</select></div>
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Priority</label><select value={form.priority || 'medium'} onChange={e => setForm({ ...form, priority: e.target.value as Project['priority'] })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">{['low','medium','high','critical'].map(p => <option key={p} value={p}>{p}</option>)}</select></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Budget ($)</label><input type="number" value={form.budget || 0} onChange={e => setForm({ ...form, budget: Number(e.target.value) })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Progress (%)</label><input type="number" min="0" max="100" value={form.progress || 0} onChange={e => setForm({ ...form, progress: Number(e.target.value) })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">Start Date</label><input type="date" value={form.start_date || ''} onChange={e => setForm({ ...form, start_date: e.target.value })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-                <div><label className="block text-xs font-medium text-muted-foreground mb-1">End Date</label><input type="date" value={form.end_date || ''} onChange={e => setForm({ ...form, end_date: e.target.value })} className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" /></div>
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowModal(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
-              <button onClick={handleCreateProject} disabled={saving} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60">{saving ? 'Creating...' : 'Create Project'}</button>
-            </div>
+      {/* Meta badges */}
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {p.project_type && (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 capitalize">{p.project_type.replace(/_/g, ' ')}</span>
+        )}
+        {p.department && (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500">{p.department}</span>
+        )}
+        {p.customer_name && (
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-50 text-emerald-600 flex items-center gap-0.5">
+            <Building2 size={8} />{p.customer_name}
+          </span>
+        )}
+      </div>
+
+      {/* Tags */}
+      {p.tags && p.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {p.tags.slice(0, 3).map((t, i) => (
+            <span key={i} className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{t}</span>
+          ))}
+          {p.tags.length > 3 && <span className="text-[9px] text-slate-400">+{p.tags.length - 3} more</span>}
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div className="mb-3">
+        <div className="flex justify-between text-[10px] mb-1">
+          <span className="text-slate-400">Progress</span>
+          <span className="font-semibold text-slate-600">{p.progress}%</span>
+        </div>
+        <div className="w-full h-1.5 bg-slate-100 rounded-full">
+          <div className="h-1.5 bg-primary rounded-full transition-all" style={{ width: `${p.progress}%` }} />
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between text-[10px] text-slate-400 border-t border-slate-100 pt-2 mt-1">
+        <div className="flex items-center gap-1"><DollarSign size={9} />Budget: ${Number(p.budget || 0).toLocaleString()}</div>
+        {(p.expected_revenue || p.customer_price) ? (
+          <div className="flex items-center gap-1 text-emerald-600 font-medium">
+            <TrendingUp size={9} />${Number(p.expected_revenue || p.customer_price || 0).toLocaleString()}
           </div>
-        </div>)}
+        ) : null}
+        {p.end_date && (
+          <div className="flex items-center gap-1"><Calendar size={9} />{new Date(p.end_date).toLocaleDateString()}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ProjectListRow({ project: p, onClick }: { project: ProjectRow; onClick: () => void }) {
+  return (
+    <div
+      onClick={onClick}
+      className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors group"
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex flex-wrap items-center gap-2 mb-0.5">
+          <span className="text-sm font-semibold text-slate-800 group-hover:text-primary transition-colors truncate">{p.name}</span>
+          {p.project_code && <span className="text-[10px] font-mono text-slate-400">{p.project_code}</span>}
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${STATUS_COLORS[p.status] || 'bg-slate-100 text-slate-500'}`}>
+            {p.status.replace('_', ' ')}
+          </span>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${PRIORITY_COLORS[p.priority] || 'bg-slate-100 text-slate-500'}`}>
+            {p.priority}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2 text-[10px] text-slate-400">
+          {p.project_type && <span className="capitalize">{p.project_type.replace(/_/g, ' ')}</span>}
+          {p.department && <span>{p.department}</span>}
+          {p.customer_name && <span className="text-emerald-600 flex items-center gap-0.5"><Building2 size={8} />{p.customer_name}</span>}
+          {p.tags && p.tags.length > 0 && (
+            <span className="flex items-center gap-0.5 text-primary"><Tag size={8} />{p.tags.slice(0, 2).join(', ')}{p.tags.length > 2 ? ` +${p.tags.length - 2}` : ''}</span>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden sm:flex items-center gap-1 w-24 shrink-0">
+        <div className="flex-1 h-1.5 bg-slate-100 rounded-full">
+          <div className="h-1.5 bg-primary rounded-full" style={{ width: `${p.progress}%` }} />
+        </div>
+        <span className="text-[10px] font-semibold text-slate-500 w-7 text-right">{p.progress}%</span>
+      </div>
+
+      <div className="hidden md:block text-[11px] text-slate-500 shrink-0">
+        ${Number(p.budget || 0).toLocaleString()}
+      </div>
+      {(p.expected_revenue || p.customer_price) ? (
+        <div className="hidden lg:block text-[11px] font-semibold text-emerald-600 shrink-0">
+          +${Number(p.expected_revenue || p.customer_price || 0).toLocaleString()}
+        </div>
+      ) : null}
+      {p.end_date && (
+        <div className="hidden lg:flex items-center gap-1 text-[10px] text-slate-400 shrink-0">
+          <Calendar size={10} />{new Date(p.end_date).toLocaleDateString()}
+        </div>
+      )}
+      <ChevronRight size={14} className="text-slate-300 group-hover:text-primary transition-colors shrink-0" />
     </div>
   );
 }

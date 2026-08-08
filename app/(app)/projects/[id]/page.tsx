@@ -17,7 +17,36 @@ interface ProjectRow {
   id: string; name: string; description: string; status: string; priority: string;
   budget: number; spent: number; progress: number; start_date: string | null;
   end_date: string | null; customer_id: string | null; created_by: string | null;
-  project_code?: string; project_type?: string; department?: string;
+  project_code?: string; project_type?: string; department?: string; category?: string;
+  objectives?: string[]; deliverables?: string[]; success_criteria?: string[]; tags?: string[];
+  customer_price?: number; discount?: number; taxes?: number; expected_revenue?: number;
+  estimated_costs?: Record<string, number>;
+  warranty_end?: string | null; support_end?: string | null;
+  deployment_date?: string | null; maintenance_end?: string | null;
+  health_score?: number; readiness_score?: number;
+  communication_channels?: string[]; meeting_frequency?: string;
+  escalation_contacts?: string[]; notification_recipients?: string[];
+  approval_needed?: boolean; approval_person?: string;
+  brand_assets?: Record<string, boolean>;
+  credentials_required?: Record<string, boolean>;
+  git_repo_url?: string; doc_links?: { name: string; url: string }[];
+}
+
+interface MilestoneRow {
+  id: string; name: string; target_date: string | null; status: string;
+}
+
+interface PhaseRow {
+  id: string; name: string; description: string | null;
+  start_date: string | null; end_date: string | null;
+}
+
+interface DependencyRow {
+  id: string; description: string; dependency_type: string; due_date: string | null;
+}
+
+interface DocumentRow {
+  id: string; name: string; document_type: string; url: string | null; description: string | null;
 }
 
 interface TaskRow {
@@ -97,6 +126,11 @@ export default function ProjectDetailPage() {
   const [assignments, setAssignments] = useState<{ id: string; member_id: string; role_in_project: string }[]>([]);
   const [risks, setRisks] = useState<RiskRow[]>([]);
   const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [milestones, setMilestones] = useState<MilestoneRow[]>([]);
+  const [phases, setPhases] = useState<PhaseRow[]>([]);
+  const [dependencies, setDependencies] = useState<DependencyRow[]>([]);
+  const [documents, setDocuments] = useState<DocumentRow[]>([]);
+  const [customerName, setCustomerName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState('overview');
   const [activeVersionId, setActiveVersionId] = useState<string | null>(null);
@@ -138,7 +172,7 @@ export default function ProjectDetailPage() {
   const loadAll = useCallback(async () => {
     if (!projectId) return;
     setLoading(true);
-    const [projRes, taskRes, verRes, memRes, asgRes, riskRes, actRes] = await Promise.all([
+    const [projRes, taskRes, verRes, memRes, asgRes, riskRes, actRes, milRes, phsRes, depRes, docRes] = await Promise.all([
       supabase.from('projects').select('*').eq('id', projectId).single(),
       supabase.from('tasks').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
       supabase.from('project_versions').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
@@ -146,6 +180,10 @@ export default function ProjectDetailPage() {
       supabase.from('project_assignments').select('id, member_id, role_in_project').eq('project_id', projectId),
       supabase.from('project_risks').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
       supabase.from('project_activity_log').select('*').eq('project_id', projectId).order('created_at', { ascending: false }).limit(50),
+      supabase.from('project_milestones').select('*').eq('project_id', projectId).order('target_date', { ascending: true }),
+      supabase.from('project_phases').select('*').eq('project_id', projectId).order('start_date', { ascending: true }),
+      supabase.from('project_dependencies').select('*').eq('project_id', projectId).order('due_date', { ascending: true }),
+      supabase.from('project_documents').select('*').eq('project_id', projectId).order('created_at', { ascending: false }),
     ]);
 
     if (projRes.data) {
@@ -163,6 +201,16 @@ export default function ProjectDetailPage() {
     setAssignments((asgRes.data as { id: string; member_id: string; role_in_project: string }[]) || []);
     setRisks((riskRes.data as RiskRow[]) || []);
     setActivity((actRes.data as ActivityRow[]) || []);
+    setMilestones((milRes.data as MilestoneRow[]) || []);
+    setPhases((phsRes.data as PhaseRow[]) || []);
+    setDependencies((depRes.data as DependencyRow[]) || []);
+    setDocuments((docRes.data as DocumentRow[]) || []);
+    if (projRes.data?.customer_id) {
+      const { data: cust } = await supabase.from('customers').select('name').eq('id', projRes.data.customer_id).single();
+      setCustomerName(cust?.name || null);
+    } else {
+      setCustomerName(null);
+    }
     setLoading(false);
   }, [projectId]);
 
@@ -440,35 +488,53 @@ export default function ProjectDetailPage() {
         {/* OVERVIEW */}
         {activeSection === 'overview' && (
           <div className="space-y-4">
+            {/* Hero card */}
             <div className="bg-white rounded-xl border border-slate-200 p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+                <div className="flex-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
                     <h2 className="text-xl font-bold text-slate-900">{project.name}</h2>
                     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[project.status] || 'bg-slate-100'}`}>
                       {project.status.replace('_', ' ')}
                     </span>
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${PRIORITY_BADGE[project.priority] || 'bg-slate-100'}`}>
+                      {project.priority}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-2 text-xs text-slate-400 mb-2">
+                    {project.project_code && <span className="bg-slate-100 px-2 py-0.5 rounded font-mono">{project.project_code}</span>}
+                    {project.project_type && <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded capitalize">{project.project_type.replace(/_/g, ' ')}</span>}
+                    {project.department && <span className="bg-slate-100 px-2 py-0.5 rounded">{project.department}</span>}
+                    {project.category && <span className="bg-slate-100 px-2 py-0.5 rounded">{project.category}</span>}
+                    {customerName && <span className="bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded flex items-center gap-1"><Building2 size={10} />{customerName}</span>}
                   </div>
                   {project.description && <p className="text-sm text-slate-600">{project.description}</p>}
+                  {project.tags && Array.isArray(project.tags) && project.tags.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {(project.tags as string[]).map((tag, i) => (
+                        <span key={i} className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">{tag}</span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-2">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400 mb-1">Budget</p>
-                  <p className="text-lg font-bold text-slate-800">${(project.budget / 1000).toFixed(0)}K</p>
+                  <p className="text-base font-bold text-slate-800">${Number(project.budget || 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400 mb-1">Spent</p>
-                  <p className="text-lg font-bold text-slate-800">${(project.spent / 1000).toFixed(0)}K</p>
+                  <p className="text-base font-bold text-slate-800">${Number(project.spent || 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400 mb-1">Progress</p>
-                  <p className="text-lg font-bold text-slate-800">{project.progress}%</p>
+                  <p className="text-base font-bold text-slate-800">{project.progress}%</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
-                  <p className="text-xs text-slate-400 mb-1">Priority</p>
-                  <p className="text-lg font-bold capitalize text-slate-800">{project.priority}</p>
+                  <p className="text-xs text-slate-400 mb-1">Expected Revenue</p>
+                  <p className="text-base font-bold text-emerald-700">${Number(project.expected_revenue || project.customer_price || 0).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -481,13 +547,6 @@ export default function ProjectDetailPage() {
                   <div className="h-2 bg-primary rounded-full transition-all" style={{ width: `${project.progress}%` }} />
                 </div>
               </div>
-
-              {(project.start_date || project.end_date) && (
-                <div className="flex items-center gap-4 mt-4 text-sm text-slate-500">
-                  {project.start_date && <div className="flex items-center gap-1.5"><Calendar size={14} /> Start: {new Date(project.start_date).toLocaleDateString()}</div>}
-                  {project.end_date && <div className="flex items-center gap-1.5"><Calendar size={14} /> End: {new Date(project.end_date).toLocaleDateString()}</div>}
-                </div>
-              )}
             </div>
 
             {/* Quick stats */}
@@ -503,7 +562,7 @@ export default function ProjectDetailPage() {
                 <p className="text-xs text-slate-400">Completed</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 p-4 text-center">
-                <Users size={20} className="text-purple-500 mx-auto mb-1" />
+                <Users size={20} className="text-blue-500 mx-auto mb-1" />
                 <p className="text-2xl font-bold text-slate-800">{assignments.length}</p>
                 <p className="text-xs text-slate-400">Team Members</p>
               </div>
@@ -512,6 +571,255 @@ export default function ProjectDetailPage() {
                 <p className="text-2xl font-bold text-slate-800">{versions.length}</p>
                 <p className="text-xs text-slate-400">Versions</p>
               </div>
+            </div>
+
+            {/* Timeline dates */}
+            <div className="bg-white rounded-xl border border-slate-200 p-5">
+              <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><Calendar size={15} className="text-primary" /> Timeline</h3>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                  { label: 'Start', value: project.start_date },
+                  { label: 'End', value: project.end_date },
+                  { label: 'Deployment', value: project.deployment_date },
+                  { label: 'Warranty End', value: project.warranty_end },
+                  { label: 'Support End', value: project.support_end },
+                  { label: 'Maintenance End', value: project.maintenance_end },
+                ].map(({ label, value }) => value ? (
+                  <div key={label} className="bg-slate-50 rounded-lg p-3">
+                    <p className="text-[10px] text-slate-400 mb-0.5">{label}</p>
+                    <p className="text-xs font-semibold text-slate-700">{new Date(value).toLocaleDateString()}</p>
+                  </div>
+                ) : null)}
+              </div>
+            </div>
+
+            {/* Milestones */}
+            {milestones.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><CheckCircle size={15} className="text-primary" /> Milestones</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2">
+                  {milestones.map(m => (
+                    <div key={m.id} className={`rounded-lg border p-3 ${m.status === 'completed' ? 'border-emerald-200 bg-emerald-50' : m.status === 'in_progress' ? 'border-blue-200 bg-blue-50' : m.status === 'delayed' ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-50'}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs font-semibold text-slate-700">{m.name}</p>
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${m.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : m.status === 'in_progress' ? 'bg-blue-100 text-blue-700' : m.status === 'delayed' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {m.status.replace('_', ' ')}
+                        </span>
+                      </div>
+                      {m.target_date && <p className="text-[10px] text-slate-400">{new Date(m.target_date).toLocaleDateString()}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Phases */}
+            {phases.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><ListTree size={15} className="text-primary" /> Project Phases</h3>
+                <div className="space-y-2">
+                  {phases.map((ph, i) => (
+                    <div key={ph.id} className="flex items-start gap-3 bg-slate-50 rounded-lg p-3">
+                      <div className="w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center flex-shrink-0 text-[10px] font-bold mt-0.5">{i + 1}</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-800">{ph.name}</p>
+                        {ph.description && <p className="text-[11px] text-slate-500 mt-0.5">{ph.description}</p>}
+                        {(ph.start_date || ph.end_date) && (
+                          <p className="text-[10px] text-slate-400 mt-1">
+                            {ph.start_date && `From ${new Date(ph.start_date).toLocaleDateString()}`}
+                            {ph.start_date && ph.end_date && ' · '}
+                            {ph.end_date && `To ${new Date(ph.end_date).toLocaleDateString()}`}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Objectives / Deliverables / Success Criteria */}
+            {((project.objectives as string[] | undefined)?.length || (project.deliverables as string[] | undefined)?.length || (project.success_criteria as string[] | undefined)?.length) ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {(project.objectives as string[] | undefined)?.length ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><BarChart3 size={15} className="text-blue-500" /> Objectives</h3>
+                    <ul className="space-y-1.5">
+                      {(project.objectives as string[]).map((o, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0 mt-1.5" />{o}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {(project.deliverables as string[] | undefined)?.length ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><FileText size={15} className="text-amber-500" /> Deliverables</h3>
+                    <ul className="space-y-1.5">
+                      {(project.deliverables as string[]).map((d, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />{d}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {(project.success_criteria as string[] | undefined)?.length ? (
+                  <div className="bg-white rounded-xl border border-slate-200 p-5">
+                    <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><CheckCircle size={15} className="text-emerald-500" /> Success Criteria</h3>
+                    <ul className="space-y-1.5">
+                      {(project.success_criteria as string[]).map((s, i) => (
+                        <li key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0 mt-1.5" />{s}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            {/* Financial details */}
+            {(project.customer_price || project.discount || project.taxes || project.estimated_costs) && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><DollarSign size={15} className="text-emerald-500" /> Financial Details</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {project.customer_price != null && project.customer_price > 0 && (
+                    <div className="bg-emerald-50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-400 mb-0.5">Customer Price</p>
+                      <p className="text-sm font-bold text-emerald-700">${Number(project.customer_price).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {project.discount != null && project.discount > 0 && (
+                    <div className="bg-orange-50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-400 mb-0.5">Discount</p>
+                      <p className="text-sm font-bold text-orange-600">-${Number(project.discount).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {project.taxes != null && project.taxes > 0 && (
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-400 mb-0.5">Taxes</p>
+                      <p className="text-sm font-bold text-slate-700">${Number(project.taxes).toLocaleString()}</p>
+                    </div>
+                  )}
+                  {project.expected_revenue != null && project.expected_revenue > 0 && (
+                    <div className="bg-blue-50 rounded-lg p-3">
+                      <p className="text-[10px] text-slate-400 mb-0.5">Net Revenue</p>
+                      <p className="text-sm font-bold text-blue-700">${Number(project.expected_revenue).toLocaleString()}</p>
+                    </div>
+                  )}
+                </div>
+                {project.estimated_costs && Object.keys(project.estimated_costs as Record<string, number>).length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-slate-600 mb-2">Estimated Cost Breakdown</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {Object.entries(project.estimated_costs as Record<string, number>)
+                        .filter(([, v]) => Number(v) > 0)
+                        .map(([k, v]) => (
+                          <div key={k} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                            <span className="text-[11px] text-slate-500 capitalize">{k.replace(/_/g, ' ')}</span>
+                            <span className="text-[11px] font-semibold text-slate-700">${Number(v).toLocaleString()}</span>
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Dependencies */}
+            {dependencies.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><Network size={15} className="text-primary" /> Dependencies</h3>
+                <div className="space-y-2">
+                  {dependencies.map(dep => (
+                    <div key={dep.id} className="flex items-start justify-between gap-3 bg-slate-50 rounded-lg p-3">
+                      <div className="flex-1">
+                        <p className="text-xs font-medium text-slate-700">{dep.description}</p>
+                        {dep.due_date && <p className="text-[10px] text-slate-400 mt-0.5">Due: {new Date(dep.due_date).toLocaleDateString()}</p>}
+                      </div>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 capitalize whitespace-nowrap">{dep.dependency_type.replace(/_/g, ' ')}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Communication & Requirements */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(project.communication_channels || project.meeting_frequency || project.escalation_contacts) && (
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                  <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><MessageSquare size={15} className="text-primary" /> Communication</h3>
+                  <div className="space-y-2">
+                    {project.meeting_frequency && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Meeting frequency</span>
+                        <span className="font-semibold text-slate-700 capitalize">{(project.meeting_frequency as string).replace(/_/g, ' ')}</span>
+                      </div>
+                    )}
+                    {project.communication_channels && (project.communication_channels as string[]).length > 0 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 mb-1">Channels</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(project.communication_channels as string[]).map((ch, i) => (
+                            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 font-medium">{ch}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.escalation_contacts && (project.escalation_contacts as string[]).length > 0 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 mb-1">Escalation contacts</p>
+                        <div className="flex flex-wrap gap-1">
+                          {(project.escalation_contacts as string[]).map((c, i) => (
+                            <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{c}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {(project.approval_needed || project.brand_assets || project.credentials_required) && (
+                <div className="bg-white rounded-xl border border-slate-200 p-5">
+                  <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2"><ShieldAlert size={15} className="text-primary" /> Requirements</h3>
+                  <div className="space-y-2">
+                    {project.approval_needed && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Approval required</span>
+                        <span className="font-semibold text-slate-700">{project.approval_person || 'Yes'}</span>
+                      </div>
+                    )}
+                    {project.brand_assets && Object.entries(project.brand_assets as Record<string, boolean>).some(([, v]) => v) && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 mb-1">Brand assets needed</p>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(project.brand_assets as Record<string, boolean>).filter(([, v]) => v).map(([k]) => (
+                            <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 capitalize">{k}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.credentials_required && Object.entries(project.credentials_required as Record<string, boolean>).some(([, v]) => v) && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 mb-1">Credentials required</p>
+                        <div className="flex flex-wrap gap-1">
+                          {Object.entries(project.credentials_required as Record<string, boolean>).filter(([, v]) => v).map(([k]) => (
+                            <span key={k} className="text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-600 capitalize">{k.replace(/_/g, ' ')}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {project.git_repo_url && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Git repository</span>
+                        <a href={project.git_repo_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate max-w-[180px]">{project.git_repo_url}</a>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -820,10 +1128,56 @@ export default function ProjectDetailPage() {
         {activeSection === 'documents' && (
           <div className="space-y-4">
             <h3 className="text-lg font-bold text-slate-900">Documents & Links</h3>
-            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-              <FolderOpen size={32} className="text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-500">Document management will appear here. Link repositories, wikis, and files related to this project.</p>
-            </div>
+
+            {documents.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><FolderOpen size={15} className="text-primary" /> Project Documents</h4>
+                <div className="space-y-2">
+                  {documents.map(doc => (
+                    <div key={doc.id} className="flex items-start justify-between gap-3 bg-slate-50 rounded-lg p-3 hover:bg-slate-100 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-semibold text-slate-800 truncate">{doc.name}</p>
+                        {doc.description && <p className="text-[11px] text-slate-500 mt-0.5 truncate">{doc.description}</p>}
+                        {doc.document_type && <span className="text-[10px] mt-1 inline-block px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 capitalize">{doc.document_type.replace(/_/g, ' ')}</span>}
+                      </div>
+                      {doc.url && (
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-primary hover:underline whitespace-nowrap flex items-center gap-1 mt-0.5">
+                          <Download size={11} /> Open
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {project.doc_links && (project.doc_links as { name: string; url: string }[]).length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><Network size={15} className="text-primary" /> Reference Links</h4>
+                <div className="space-y-2">
+                  {(project.doc_links as { name: string; url: string }[]).map((link, i) => (
+                    <div key={i} className="flex items-center justify-between gap-3 bg-slate-50 rounded-lg p-3">
+                      <span className="text-xs font-medium text-slate-700">{link.name}</span>
+                      <a href={link.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-medium text-primary hover:underline truncate max-w-[200px]">{link.url}</a>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {project.git_repo_url && (
+              <div className="bg-white rounded-xl border border-slate-200 p-5">
+                <h4 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2"><GitBranch size={15} className="text-primary" /> Git Repository</h4>
+                <a href={project.git_repo_url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">{project.git_repo_url}</a>
+              </div>
+            )}
+
+            {documents.length === 0 && !(project.doc_links as { name: string; url: string }[] | undefined)?.length && !project.git_repo_url && (
+              <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
+                <FolderOpen size={32} className="text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-500">No documents have been added to this project yet. Add documents via the project wizard or upload them directly.</p>
+              </div>
+            )}
           </div>
         )}
 

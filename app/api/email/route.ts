@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { sendTransactionalEmail } from '@/lib/email';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(request: Request) {
   try {
     const { to, subject, html, text, from } = await request.json();

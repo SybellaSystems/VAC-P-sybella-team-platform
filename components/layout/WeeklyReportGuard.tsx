@@ -31,7 +31,6 @@ export function WeeklyReportGuard({ children }: { children: React.ReactNode }) {
 
     const now = new Date();
     if (!data || data.length === 0) {
-      // No report ever submitted — check if account is older than 6 days
       const joinedAt = new Date(profile.joined_at || profile.created_at);
       const daysSinceJoin = Math.floor((now.getTime() - joinedAt.getTime()) / (1000 * 60 * 60 * 24));
       if (daysSinceJoin >= 6) {
@@ -62,16 +61,25 @@ export function WeeklyReportGuard({ children }: { children: React.ReactNode }) {
     }
   }, [loading, profile, checkReportStatus]);
 
-  // Block navigation if report is needed and user is not on an exempt page
+  // Intercept ALL navigation when report is needed
   useEffect(() => {
     if (checking || !needsReport) return;
     const isExempt = EXEMPT_PATHS.some(p => pathname?.startsWith(p));
     if (!isExempt) {
       setShowModal(true);
+      // Force redirect to accountability if not on an exempt page
+      router.replace('/accountability');
     } else {
       setShowModal(false);
     }
-  }, [checking, needsReport, pathname]);
+  }, [checking, needsReport, pathname, router]);
+
+  // Re-check when path changes (user might submit from accountability page)
+  useEffect(() => {
+    if (!loading && profile && needsReport) {
+      checkReportStatus();
+    }
+  }, [pathname, loading, profile, needsReport, checkReportStatus]);
 
   const handleSubmitted = () => {
     setShowModal(false);
@@ -84,93 +92,71 @@ export function WeeklyReportGuard({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
+  const isExempt = EXEMPT_PATHS.some(p => pathname?.startsWith(p));
+
+  // If on an exempt page, render children but show the modal prompt
+  if (isExempt) {
+    return (
+      <>
+        {children}
+        <WeeklyReportModal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          onSubmitted={handleSubmitted}
+          profileId={profile?.id || ''}
+        />
+      </>
+    );
+  }
+
+  // Not on an exempt page — render the blocking overlay only, no children
   return (
-    <>
-      {/* Block all content with an overlay when not on exempt pages */}
-      {showModal && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
-            {/* Header */}
-            <div className="bg-gradient-to-r from-amber-500 to-red-500 p-6 text-white">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
-                  <AlertTriangle size={24} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold">Weekly Report Overdue</h2>
-                  <p className="text-sm text-white/80">Action required to continue</p>
-                </div>
-              </div>
+    <div className="fixed inset-0 z-[100] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden">
+        <div className="bg-gradient-to-r from-amber-500 to-red-500 p-6 text-white">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center">
+              <AlertTriangle size={24} />
             </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-4">
-              <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-200">
-                <Clock size={18} className="text-red-600 flex-shrink-0" />
-                <p className="text-sm text-red-700">
-                  {daysOverdue === 1
-                    ? `Your weekly report is ${daysOverdue} day overdue.`
-                    : `Your weekly report is ${daysOverdue} days overdue.`}
-                </p>
-              </div>
-
-              <p className="text-sm text-slate-600">
-                You haven&apos;t submitted a weekly report in over 6 days. This platform requires
-                all team members — including administrators — to submit weekly reports regularly.
-              </p>
-
-              {lastReportDate && (
-                <p className="text-xs text-slate-400">
-                  Last report submitted: {new Date(lastReportDate).toLocaleDateString()}
-                </p>
-              )}
-
-              <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                  You can navigate to:
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => router.push('/accountability')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-                  >
-                    <FileText size={12} /> Submit Report
-                  </button>
-                  <button
-                    onClick={() => router.push('/notifications')}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
-                  >
-                    Notifications
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="px-6 pb-6">
-              <button
-                onClick={() => setShowModal(true)}
-                className="w-full py-3 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
-              >
-                <FileText size={16} /> Submit Weekly Report Now
-              </button>
+            <div>
+              <h2 className="text-lg font-bold">Weekly Report Overdue</h2>
+              <p className="text-sm text-white/80">Action required to continue</p>
             </div>
           </div>
         </div>
-      )}
 
-      {/* The modal for submitting the report */}
-      <WeeklyReportModal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        onSubmitted={handleSubmitted}
-        profileId={profile?.id || ''}
-      />
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-red-50 rounded-xl border border-red-200">
+            <Clock size={18} className="text-red-600 flex-shrink-0" />
+            <p className="text-sm text-red-700">
+              {daysOverdue === 1
+                ? `Your weekly report is ${daysOverdue} day overdue.`
+                : `Your weekly report is ${daysOverdue} days overdue.`}
+            </p>
+          </div>
 
-      {/* Render children underneath but blocked by overlay */}
-      <div className={showModal ? 'pointer-events-none select-none' : ''}>
-        {children}
+          <p className="text-sm text-slate-600">
+            You haven&apos;t submitted a weekly report in over 6 days. This platform requires
+            all team members — including administrators — to submit weekly reports regularly.
+            You cannot navigate to any other page until you submit your report.
+          </p>
+
+          {lastReportDate && (
+            <p className="text-xs text-slate-400">
+              Last report submitted: {new Date(lastReportDate).toLocaleDateString()}
+            </p>
+          )}
+        </div>
+
+        <div className="px-6 pb-6">
+          <button
+            onClick={() => router.push('/accountability')}
+            className="w-full py-3 text-sm font-semibold bg-primary text-white rounded-xl hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+          >
+            <FileText size={16} /> Go to Submit Report
+          </button>
+        </div>
       </div>
-    </>
+    </div>
   );
 }

@@ -252,6 +252,7 @@ export type Channel = {
   type: 'public' | 'private' | 'direct';
   created_by: string | null;
   created_at: string;
+  project_id?: string | null;
 };
 
 export type Message = {

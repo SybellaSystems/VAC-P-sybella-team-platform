@@ -210,6 +210,26 @@ export default function AccountabilityPage() {
     };
 
     await supabase.from('accountability_reports').insert(reportData);
+
+    // Also insert into weekly_reports when report type is weekly (for strict enforcement)
+    if (reportType === 'weekly') {
+      const now = new Date();
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - 6);
+      const weekEnd = new Date(now);
+      await supabase.from('weekly_reports').insert({
+        member_id: profile.id,
+        week_start: weekStart.toISOString().split('T')[0],
+        week_end: weekEnd.toISOString().split('T')[0],
+        accomplishments: reportData.completed_tasks || summary,
+        planned_tasks: reportData.planned_tasks || '',
+        blockers: reportData.blockers || 'None',
+        highlights: reportData.notes || '',
+        status: 'submitted',
+        submitted_at: now.toISOString(),
+      });
+    }
+
     await loadAll();
     setSaving(false);
     setShowModal(false);

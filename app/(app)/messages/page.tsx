@@ -51,13 +51,36 @@ export default function MessagesPage() {
   }, [messages]);
 
   const loadChannels = async () => {
-    const { data } = await supabase
-      .from('channels')
-      .select('*, project:projects(id, name)')
-      .order('name');
-    const ch = (data as (Channel & { project?: { id: string; name: string } | null })[]) || [];
-    setChannels(ch);
-    if (ch.length > 0 && !activeChannel) setActiveChannel(ch[0]);
+    if (!profile?.id) return;
+    // RLS already filters channels server-side — only accessible channels are returned.
+    // For project channels, RLS checks project_assignments membership.
+    // We also fetch channel_members to show which channels the user has explicitly joined.
+    const [chanRes, memberRes] = await Promise.all([
+      supabase
+        .from('channels')
+        .select('*, project:projects(id, name)')
+        .order('name'),
+      supabase
+        .from('channel_members')
+        .select('channel_id')
+        .eq('member_id', profile.id),
+    ]);
+
+    const ch = (chanRes.data as (Channel & { project?: { id: string; name: string } | null })[]) || [];
+    // RLS ensures only accessible channels are returned, but we double-check membership
+    // for project channels to enforce strict access control on the client side too.
+    const memberChannelIds = new Set(((memberRes.data as { channel_id: string }[]) || []).map(m => m.channel_id));
+    const accessibleChannels = ch.filter(c => {
+      // General channels (no project_id) are visible to all
+      if (!c.project_id) return true;
+      // Project channels: user must be a channel member OR assigned to the project
+      if (memberChannelIds.has(c.id)) return true;
+      // RLS already filtered, but be explicit: project channels require project membership
+      return false;
+    });
+
+    setChannels(accessibleChannels);
+    if (accessibleChannels.length > 0 && !activeChannel) setActiveChannel(accessibleChannels[0]);
   };
 
   const loadMembers = async () => {

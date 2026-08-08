@@ -365,6 +365,7 @@ export async function createProjectWithWizard(
         description: `Discussion space for ${data.name}`,
         type: 'private',
         created_by: creatorId,
+        project_id: projectId,
       })
       .select()
       .single();

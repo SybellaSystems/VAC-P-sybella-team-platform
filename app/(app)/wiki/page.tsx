@@ -21,22 +21,33 @@ import { BookOpen, Plus, Search, FileText, CreditCard as Edit, Eye } from 'lucid
 import { TopBar } from '@/components/layout/TopBar';
 import { toast } from 'sonner';
 import { canEditWiki } from '@/lib/rbac';
-import type { WikiPage } from '@/lib/database.types';
+
+interface WikiPageRow {
+  id: string;
+  title: string;
+  slug: string;
+  content: string;
+  category: string | null;
+  is_published: boolean;
+  author_id: string | null;
+  last_edited_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function WikiPage() {
   const { profile } = useAuth();
 
-  const [pages, setPages] = useState<WikiPage[]>([]);
+  const [pages, setPages] = useState<WikiPageRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPage, setSelectedPage] = useState<WikiPage | null>(null);
+  const [selectedPage, setSelectedPage] = useState<WikiPageRow | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
 
   const [newPage, setNewPage] = useState({
     title: '',
     content: '',
-    summary: '',
     category: 'general',
   });
 
@@ -54,7 +65,7 @@ export default function WikiPage() {
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setPages(data || []);
+      setPages((data as WikiPageRow[]) || []);
     } catch (error) {
       console.error('Error fetching wiki pages:', error);
       toast.error('Failed to load wiki pages');
@@ -73,18 +84,16 @@ export default function WikiPage() {
         title: newPage.title,
         slug,
         content: newPage.content,
-        summary: newPage.summary,
+        category: newPage.category,
         is_published: true,
-        published_at: new Date().toISOString(),
-        created_by_user_id: profile.id,
-        metadata: { category: newPage.category },
+        author_id: profile.id,
       });
 
       if (error) throw error;
 
       toast.success('Wiki page created');
       setShowCreateDialog(false);
-      setNewPage({ title: '', content: '', summary: '', category: 'general' });
+      setNewPage({ title: '', content: '', category: 'general' });
       fetchPages();
     } catch (error) {
       console.error('Error creating page:', error);
@@ -101,7 +110,9 @@ export default function WikiPage() {
         .update({
           title: newPage.title,
           content: newPage.content,
-          summary: newPage.summary,
+          category: newPage.category,
+          last_edited_by: profile?.id ?? null,
+          updated_at: new Date().toISOString(),
         })
         .eq('id', selectedPage.id);
 
@@ -162,8 +173,8 @@ export default function WikiPage() {
                   <Input value={newPage.title} onChange={e => setNewPage({ ...newPage, title: e.target.value })} placeholder="Page title" />
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Summary</label>
-                  <Input value={newPage.summary} onChange={e => setNewPage({ ...newPage, summary: e.target.value })} placeholder="Brief summary" />
+                  <label className="text-sm font-medium">Category</label>
+                  <Input value={newPage.category} onChange={e => setNewPage({ ...newPage, category: e.target.value })} placeholder="e.g. general, policy, guide" />
                 </div>
                 <div>
                   <label className="text-sm font-medium">Content (Markdown supported)</label>
@@ -205,11 +216,14 @@ export default function WikiPage() {
                   <div className="p-2 rounded-lg bg-blue-100">
                     <FileText className="h-5 w-5 text-blue-600" />
                   </div>
+                  {page.category && (
+                    <Badge variant="secondary">{page.category}</Badge>
+                  )}
                   {canEdit && (
                     <Button variant="ghost" size="sm" onClick={(e) => {
                       e.stopPropagation();
                       setSelectedPage(page);
-                      setNewPage({ title: page.title, content: page.content, summary: page.summary || '', category: 'general' });
+                      setNewPage({ title: page.title, content: page.content, category: page.category || 'general' });
                       setShowEditDialog(true);
                     }}>
                       <Edit className="h-4 w-4" />
@@ -217,7 +231,7 @@ export default function WikiPage() {
                   )}
                 </div>
                 <CardTitle className="text-lg">{page.title}</CardTitle>
-                <CardDescription>{page.summary || 'No summary available'}</CardDescription>
+                <CardDescription>Updated {new Date(page.updated_at).toLocaleDateString()}</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-xs text-slate-500">
@@ -242,8 +256,8 @@ export default function WikiPage() {
               <Input value={newPage.title} onChange={e => setNewPage({ ...newPage, title: e.target.value })} />
             </div>
             <div>
-              <label className="text-sm font-medium">Summary</label>
-              <Input value={newPage.summary} onChange={e => setNewPage({ ...newPage, summary: e.target.value })} />
+              <label className="text-sm font-medium">Category</label>
+              <Input value={newPage.category} onChange={e => setNewPage({ ...newPage, category: e.target.value })} />
             </div>
             <div>
               <label className="text-sm font-medium">Content</label>
@@ -262,7 +276,7 @@ export default function WikiPage() {
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{selectedPage?.title}</DialogTitle>
-            <DialogDescription>{selectedPage?.summary}</DialogDescription>
+            {selectedPage?.category && <DialogDescription>{selectedPage.category}</DialogDescription>}
           </DialogHeader>
           <div className="prose prose-slate max-w-none">
             <pre className="whitespace-pre-wrap text-sm">{selectedPage?.content}</pre>
