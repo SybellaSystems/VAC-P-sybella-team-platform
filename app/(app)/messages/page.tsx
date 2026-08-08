@@ -24,7 +24,7 @@ export default function MessagesPage() {
   useEffect(() => {
     loadChannels();
     loadMembers();
-  }, []);
+  }, [profile?.id]);
 
   useEffect(() => {
     if (activeChannel) {
@@ -52,9 +52,7 @@ export default function MessagesPage() {
 
   const loadChannels = async () => {
     if (!profile?.id) return;
-    // RLS already filters channels server-side — only accessible channels are returned.
-    // For project channels, RLS checks project_assignments membership.
-    // We also fetch channel_members to show which channels the user has explicitly joined.
+
     const [chanRes, memberRes] = await Promise.all([
       supabase
         .from('channels')
@@ -66,16 +64,18 @@ export default function MessagesPage() {
         .eq('member_id', profile.id),
     ]);
 
-    const ch = (chanRes.data as (Channel & { project?: { id: string; name: string } | null })[]) || [];
-    // RLS ensures only accessible channels are returned, but we double-check membership
-    // for project channels to enforce strict access control on the client side too.
+    if (chanRes.error) console.error('Error loading channels:', chanRes.error.message);
+    if (memberRes.error) console.error('Error loading channel members:', memberRes.error.message);
+
+    const ch = (chanRes.data as (Channel & { project?: { id: string; name: string } | null; type?: string })[]) || [];
     const memberChannelIds = new Set(((memberRes.data as { channel_id: string }[]) || []).map(m => m.channel_id));
+
+    // Filter rules:
+    // 1. Public channels are visible to everyone.
+    // 2. Private channels require explicit membership in channel_members.
     const accessibleChannels = ch.filter(c => {
-      // General channels (no project_id) are visible to all
-      if (!c.project_id) return true;
-      // Project channels: user must be a channel member OR assigned to the project
+      if (c.type === 'public' || !c.type) return true;
       if (memberChannelIds.has(c.id)) return true;
-      // RLS already filtered, but be explicit: project channels require project membership
       return false;
     });
 
@@ -269,7 +269,7 @@ export default function MessagesPage() {
 
                 {/* Main Channel Title */}
                 <div className="px-4 sm:px-5 py-3 flex items-center gap-3">
-                  <button onClick={() => setShowChannelList(false)} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
+                  <button onClick={() => setShowChannelList(true)} className="md:hidden p-1.5 rounded-lg hover:bg-muted text-muted-foreground">
                     <Hash size={18} />
                   </button>
                   <Hash size={18} className="text-muted-foreground hidden md:block" />
