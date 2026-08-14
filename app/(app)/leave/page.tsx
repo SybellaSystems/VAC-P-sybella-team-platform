@@ -58,7 +58,15 @@ export default function LeavePage() {
   async function fetchLeaveRequests() {
     setLoading(true);
     try {
-      let query = supabase.from('leave_requests').select('*, member:profiles!leave_requests_member_id_fkey(*)');
+      let query = supabase.from('leave_requests').select(`
+        *,
+        member:profiles!leave_requests_member_id_fkey(
+          id,
+          full_name,
+          email,
+          role
+        )
+      `);
 
       if (!canViewAllLeave(profile?.role)) {
         query = query.eq('member_id', profile?.id);
@@ -179,194 +187,194 @@ export default function LeavePage() {
     <div>
       <TopBar title="Leave Management" subtitle="Request and manage time off" />
       <div className="p-4 sm:p-6 space-y-5">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Leave Management</h1>
-          <p className="text-slate-600">Request and manage time off</p>
-        </div>
-        <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Request Leave
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Request Leave</DialogTitle>
-              <DialogDescription>Submit a new leave request</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Leave Type</label>
-                <Select value={newRequest.leave_type} onValueChange={(v: LeaveRequest['leave_type']) => setNewRequest({ ...newRequest, leave_type: v })}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="vacation">Vacation</SelectItem>
-                    <SelectItem value="sick">Sick Leave</SelectItem>
-                    <SelectItem value="personal">Personal</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Leave Management</h1>
+            <p className="text-slate-600">Request and manage time off</p>
+          </div>
+          <Dialog open={showRequestDialog} onOpenChange={setShowRequestDialog}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Request Leave
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Request Leave</DialogTitle>
+                <DialogDescription>Submit a new leave request</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium">Start Date</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(newRequest.start_date, 'PPP')}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={newRequest.start_date}
-                        onSelect={(date) => date && setNewRequest({ ...newRequest, start_date: date })}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                  <label className="text-sm font-medium">Leave Type</label>
+                  <Select value={newRequest.leave_type} onValueChange={(v: LeaveRequest['leave_type']) => setNewRequest({ ...newRequest, leave_type: v })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="vacation">Vacation</SelectItem>
+                      <SelectItem value="sick">Sick Leave</SelectItem>
+                      <SelectItem value="personal">Personal</SelectItem>
+                      <SelectItem value="other">Other</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-                <div>
-                  <label className="text-sm font-medium">End Date</label>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className="w-full justify-start">
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {format(newRequest.end_date, 'PPP')}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={newRequest.end_date}
-                        onSelect={(date) => date && setNewRequest({ ...newRequest, end_date: date })}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Reason</label>
-                <Textarea value={newRequest.reason} onChange={e => setNewRequest({ ...newRequest, reason: e.target.value })} placeholder="Optional explanation" rows={3} />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRequestDialog(false)}>Cancel</Button>
-              <Button onClick={handleSubmitRequest}>Submit Request</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {canApprove && pendingRequests.length > 0 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader>
-            <CardTitle className="text-amber-800 flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Pending Approvals ({pendingRequests.length})
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {pendingRequests.slice(0, 5).map(request => (
-              <div key={request.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
-                <div>
-                  <p className="font-medium">{(request.member as Profile)?.full_name || 'Unknown'}</p>
-                  <p className="text-sm text-slate-500">
-                    {request.leave_type} • {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => handleReject(request.id)}>
-                    <XCircle className="h-4 w-4 mr-1" />
-                    Reject
-                  </Button>
-                  <Button size="sm" onClick={() => handleApprove(request.id)}>
-                    <CheckCircle className="h-4 w-4 mr-1" />
-                    Approve
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {canViewAll && (
-        <div className="grid gap-4">
-          <h2 className="text-lg font-semibold">All Leave Requests</h2>
-          {leaveRequests.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <CalendarRange className="h-12 w-12 text-slate-300 mb-4" />
-                <p className="text-slate-500">No leave requests</p>
-              </CardContent>
-            </Card>
-          ) : (
-            leaveRequests.map(request => (
-              <Card key={request.id}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h3 className="font-semibold">{(request.member as Profile)?.full_name || 'Unknown'}</h3>
-                      <p className="text-sm text-slate-500">
-                        {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
-                      </p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge className={getLeaveTypeColor(request.leave_type)}>{request.leave_type}</Badge>
-                        <Badge className={getStatusColor(request.status)}>{request.status}</Badge>
-                      </div>
-                      {request.reason && <p className="text-sm text-slate-600 mt-2">{request.reason}</p>}
-                    </div>
-                    {canApprove && request.status === 'pending' && (
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleReject(request.id)}>Reject</Button>
-                        <Button size="sm" onClick={() => handleApprove(request.id)}>Approve</Button>
-                      </div>
-                    )}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium">Start Date</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {format(newRequest.start_date, 'PPP')}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={newRequest.start_date}
+                          onSelect={(date) => date && setNewRequest({ ...newRequest, start_date: date })}
+                        />
+                      </PopoverContent>
+                    </Popover>
                   </div>
+                  <div>
+                    <label className="text-sm font-medium">End Date</label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button variant="outline" className="w-full justify-start">
+                          <CalendarIcon className="mr-2 h-4 w-4" />
+                          {format(newRequest.end_date, 'PPP')}
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0">
+                        <Calendar
+                          mode="single"
+                          selected={newRequest.end_date}
+                          onSelect={(date) => date && setNewRequest({ ...newRequest, end_date: date })}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Reason</label>
+                  <Textarea value={newRequest.reason} onChange={e => setNewRequest({ ...newRequest, reason: e.target.value })} placeholder="Optional explanation" rows={3} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setShowRequestDialog(false)}>Cancel</Button>
+                <Button onClick={handleSubmitRequest}>Submit Request</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        {canApprove && pendingRequests.length > 0 && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardHeader>
+              <CardTitle className="text-amber-800 flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Pending Approvals ({pendingRequests.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {pendingRequests.slice(0, 5).map(request => (
+                <div key={request.id} className="flex items-center justify-between bg-white p-3 rounded-lg border">
+                  <div>
+                    <p className="font-medium">{(request.member as Profile)?.full_name || 'Unknown Staff'}</p>
+                    <p className="text-sm text-slate-500">
+                      {request.leave_type} • {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleReject(request.id)}>
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Reject
+                    </Button>
+                    <Button size="sm" onClick={() => handleApprove(request.id)}>
+                      <CheckCircle className="h-4 w-4 mr-1" />
+                      Approve
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {canViewAll && (
+          <div className="grid gap-4">
+            <h2 className="text-lg font-semibold">All Leave Requests</h2>
+            {leaveRequests.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <CalendarRange className="h-12 w-12 text-slate-300 mb-4" />
+                  <p className="text-slate-500">No leave requests</p>
                 </CardContent>
               </Card>
-            ))
-          )}
-        </div>
-      )}
-
-      {!canViewAll && (
-        <div className="grid gap-4">
-          <h2 className="text-lg font-semibold">My Leave Requests</h2>
-          {myRequests.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <CalendarRange className="h-12 w-12 text-slate-300 mb-4" />
-                <p className="text-slate-500">No leave requests</p>
-              </CardContent>
-            </Card>
-          ) : (
-            myRequests.map(request => (
-              <Card key={request.id}>
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm text-slate-500">
-                        {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
-                      </p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge className={getLeaveTypeColor(request.leave_type)}>{request.leave_type}</Badge>
-                        <Badge className={getStatusColor(request.status)}>{request.status}</Badge>
+            ) : (
+              leaveRequests.map(request => (
+                <Card key={request.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h3 className="font-semibold">{(request.member as Profile)?.full_name || 'Unknown Staff'}</h3>
+                        <p className="text-sm text-slate-500">
+                          {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge className={getLeaveTypeColor(request.leave_type)}>{request.leave_type}</Badge>
+                          <Badge className={getStatusColor(request.status)}>{request.status}</Badge>
+                        </div>
+                        {request.reason && <p className="text-sm text-slate-600 mt-2">{request.reason}</p>}
                       </div>
-                      {request.reason && <p className="text-sm text-slate-600 mt-2">{request.reason}</p>}
+                      {canApprove && request.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" onClick={() => handleReject(request.id)}>Reject</Button>
+                          <Button size="sm" onClick={() => handleApprove(request.id)}>Approve</Button>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
+
+        {!canViewAll && (
+          <div className="grid gap-4">
+            <h2 className="text-lg font-semibold">My Leave Requests</h2>
+            {myRequests.length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-12">
+                  <CalendarRange className="h-12 w-12 text-slate-300 mb-4" />
+                  <p className="text-slate-500">No leave requests</p>
                 </CardContent>
               </Card>
-            ))
-          )}
-        </div>
-      )}
+            ) : (
+              myRequests.map(request => (
+                <Card key={request.id}>
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-sm text-slate-500">
+                          {format(new Date(request.start_date), 'MMM d')} - {format(new Date(request.end_date), 'MMM d, yyyy')}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Badge className={getLeaveTypeColor(request.leave_type)}>{request.leave_type}</Badge>
+                          <Badge className={getStatusColor(request.status)}>{request.status}</Badge>
+                        </div>
+                        {request.reason && <p className="text-sm text-slate-600 mt-2">{request.reason}</p>}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
