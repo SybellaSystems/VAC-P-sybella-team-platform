@@ -22,6 +22,12 @@ export type Profile = {
   role: Role;
   avatar_url: string;
   department: string;
+  department_id?: string | null;
+  supervisor_id?: string | null;
+  title?: string;
+  joining_date?: string | null;
+  is_md?: boolean;
+  profile_deleted_at?: string | null;
   phone: string;
   location: string;
   bio: string;

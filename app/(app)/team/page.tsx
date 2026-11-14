@@ -1,284 +1,259 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { DataTable, type DataTableColumn } from '@sybellasystems/ui';
+import { Edit2, UserPlus } from 'lucide-react';
 import { TopBar } from '@/components/layout/TopBar';
-import { supabase } from '@/lib/supabase';
+import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
 import { useAuth } from '@/contexts/AuthContext';
-import type { Profile, Role } from '@/lib/database.types';
-import { UserPlus, Mail, Phone, MapPin, Shield, Search, MoveVertical as MoreVertical, CircleCheck as CheckCircle, Circle as XCircle, CreditCard as Edit2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
+import type { Profile } from '@/lib/database.types';
 
-const roleColors: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  director: 'bg-amber-100 text-amber-700',
-  manager: 'bg-blue-100 text-blue-700',
-  developer: 'bg-emerald-100 text-emerald-700',
-  designer: 'bg-pink-100 text-pink-700',
-  qa: 'bg-orange-100 text-orange-700',
-  sales: 'bg-teal-100 text-teal-700',
-  hr: 'bg-violet-100 text-violet-700',
-  finance: 'bg-cyan-100 text-cyan-700',
+type Department = { id: string; name: string };
+type MemberDraft = {
+  id?: string;
+  email: string;
+  full_name: string;
+  role: string;
+  department_id: string;
+  title: string;
+  joining_date: string;
+  supervisor_id: string;
+  phone: string;
+  bio: string;
+};
+type MemberRow = Record<string, unknown> & {
+  id: string;
+  name: string;
+  title: string;
+  department: string;
+  role: string;
+  joined: string;
 };
 
-const departmentMap: Record<string, string> = {
-  admin: 'Administration',
-  director: 'Executive',
-  manager: 'Management',
-  developer: 'Engineering',
-  designer: 'Design',
-  qa: 'Quality Assurance',
-  sales: 'Sales & Marketing',
-  hr: 'Human Resources',
-  finance: 'Finance',
-};
-
-const defaultMembers = [
-  { full_name: 'Alice Uwimana', role: 'admin', department: 'Administration', email: 'alice@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Brian Nkurunziza', role: 'director', department: 'Executive', email: 'brian@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Christine Mukamana', role: 'manager', department: 'Management', email: 'christine@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'David Habimana', role: 'developer', department: 'Engineering', email: 'david@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Esther Ingabire', role: 'developer', department: 'Engineering', email: 'esther@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Frank Bizimana', role: 'designer', department: 'Design', email: 'frank@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Grace Uwase', role: 'qa', department: 'Quality Assurance', email: 'grace@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Henry Ndayishimiye', role: 'sales', department: 'Sales & Marketing', email: 'henry@sybellasystems.com', location: 'Kigali, Rwanda' },
-  { full_name: 'Isabelle Mutesi', role: 'finance', department: 'Finance', email: 'isabelle@sybellasystems.com', location: 'Kigali, Rwanda' },
-];
-
-type ModalMode = 'add' | 'edit' | null;
+const roles = ['intern', 'partner', 'developer', 'designer', 'qa', 'manager', 'sales', 'marketing_manager', 'legal_counsel', 'finance', 'hr'];
+const blankDraft = (): MemberDraft => ({
+  email: '',
+  full_name: '',
+  role: 'intern',
+  department_id: '',
+  title: '',
+  joining_date: new Date().toISOString().slice(0, 10),
+  supervisor_id: '',
+  phone: '',
+  bio: '',
+});
 
 export default function TeamPage() {
   const { profile } = useAuth();
+  const router = useRouter();
+  const canManage = profile?.role === 'admin' || profile?.role === 'director';
   const [members, setMembers] = useState<Profile[]>([]);
-  const [search, setSearch] = useState('');
-  const [filterRole, setFilterRole] = useState('all');
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [query, setQuery] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<ModalMode>(null);
-  const [editMember, setEditMember] = useState<Partial<Profile> | null>(null);
+  const [error, setError] = useState('');
+  const [modal, setModal] = useState<'add' | 'edit' | null>(null);
+  const [draft, setDraft] = useState<MemberDraft>(blankDraft());
   const [saving, setSaving] = useState(false);
 
-  const canManage = profile?.role === 'admin' || profile?.role === 'director';
-
-  useEffect(() => {
-    loadTeam();
-  }, []);
-
   const loadTeam = async () => {
-    const { data } = await supabase.from('profiles').select('*').order('full_name');
-    setMembers((data as Profile[]) || []);
+    setLoading(true);
+    setError('');
+    const [people, departmentsResult] = await Promise.all([
+      supabase.from('profiles').select('*').order('full_name'),
+      supabase.from('departments').select('id, name').order('name'),
+    ]);
+    if (people.error || departmentsResult.error) {
+      const issue = people.error || departmentsResult.error;
+      console.error('Unable to load team directory:', issue?.message);
+      setError(issue?.message || 'Unable to load the team directory.');
+    } else {
+      setMembers((people.data || []) as Profile[]);
+      setDepartments((departmentsResult.data || []) as Department[]);
+    }
     setLoading(false);
   };
 
-  const filtered = members.filter(m => {
-    const matchSearch = m.full_name.toLowerCase().includes(search.toLowerCase()) ||
-      m.email.toLowerCase().includes(search.toLowerCase());
-    const matchRole = filterRole === 'all' || m.role === filterRole;
-    return matchSearch && matchRole;
-  });
+  useEffect(() => { void loadTeam(); }, [profile?.id]);
 
-  const initials = (name: string) =>
-    name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const visibleMembers = useMemo(() => members.filter((member) => {
+    if (member.role === 'deleted') return false;
+    const matchesText = `${member.full_name} ${member.email} ${member.department} ${member.title || ''}`.toLowerCase().includes(query.toLowerCase());
+    return matchesText && (roleFilter === 'all' || member.role === roleFilter);
+  }), [members, query, roleFilter]);
 
-  const handleSave = async () => {
-    if (!editMember?.full_name || !editMember?.email) return;
-    setSaving(true);
-    if (modal === 'edit' && editMember.id) {
-      await supabase.from('profiles').update({
-        full_name: editMember.full_name,
-        role: editMember.role,
-        department: editMember.department,
-        phone: editMember.phone,
-        bio: editMember.bio,
-      }).eq('id', editMember.id);
-    }
-    await loadTeam();
-    setSaving(false);
-    setModal(null);
-    setEditMember(null);
-  };
+  const rows: MemberRow[] = visibleMembers.map((member) => ({
+    id: member.id,
+    name: member.full_name,
+    title: member.title || '',
+    department: member.department || 'Unassigned',
+    role: member.role,
+    joined: member.joining_date || member.joined_at || '',
+  }));
 
-  return (
-    <div>
-      <TopBar title="Team" subtitle="Sybella Systems — 9 Members" />
-      <div className="p-6 space-y-5">
-        {/* Header */}
-        <div className="flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex gap-3 flex-1">
-            <div className="relative">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search members..."
-                className="pl-9 pr-4 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary w-52"
-              />
-            </div>
-            <select
-              value={filterRole}
-              onChange={e => setFilterRole(e.target.value)}
-              className="px-3 py-2 text-sm border border-input rounded-lg bg-white outline-none focus:ring-2 focus:ring-primary"
-            >
-              <option value="all">All Roles</option>
-              {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
-                <option key={r} value={r} className="capitalize">{r}</option>
-              ))}
-            </select>
-          </div>
-          {canManage && (
-            <button
-              onClick={() => { setModal('add'); setEditMember({ role: 'developer', location: 'Kigali, Rwanda' }); }}
-              className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              <UserPlus size={16} />
-              Add Member
+  const columns: DataTableColumn<MemberRow>[] = [
+    { key: 'name', header: 'Team member', sortable: true, render: (_value, row) => (
+      <div>
+        <p className="font-semibold text-slate-900">{row.name}</p>
+        <p className="text-xs text-slate-500">{row.title || row.role.replaceAll('_', ' ')}</p>
+      </div>
+    ) },
+    { key: 'department', header: 'Department', sortable: true },
+    { key: 'role', header: 'Access type', sortable: true, render: (_value, row) => <span className="capitalize">{row.role.replaceAll('_', ' ')}</span> },
+    { key: 'joined', header: 'Joined', sortable: true },
+    { key: 'id', header: 'Actions', align: 'right', render: (_value, row) => {
+      const member = members.find((candidate) => candidate.id === row.id);
+      return (
+        <div className="flex items-center justify-end gap-3">
+          <span className="text-blue-700">View profile</span>
+          {canManage && member && (
+            <button type="button" className="rounded p-1 text-slate-500 hover:bg-slate-100" aria-label={`Edit ${member.full_name}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setDraft({
+                  id: member.id,
+                  email: member.email,
+                  full_name: member.full_name,
+                  role: member.role,
+                  department_id: member.department_id || '',
+                  title: member.title || '',
+                  joining_date: member.joining_date || '',
+                  supervisor_id: member.supervisor_id || '',
+                  phone: member.phone || '',
+                  bio: member.bio || '',
+                });
+                setModal('edit');
+              }}>
+              <Edit2 size={14} />
             </button>
           )}
         </div>
+      );
+    } },
+  ];
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-          {['developer','manager','designer','qa','sales','hr'].map(role => {
-            const count = members.filter(m => m.role === role).length;
-            return (
-              <div key={role} className="bg-white rounded-xl border border-border p-3 text-center">
-                <p className="text-lg font-bold text-foreground">{count}</p>
-                <p className="text-xs text-muted-foreground capitalize">{role}s</p>
-              </div>
-            );
-          })}
+  const submit = async () => {
+    if (!draft.full_name.trim() || !draft.email.trim() || saving) return;
+    setSaving(true);
+    let saveError: string | null = null;
+    if (modal === 'add') {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const response = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionData.session?.access_token ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+        },
+        body: JSON.stringify({
+          email: draft.email,
+          full_name: draft.full_name,
+          role: draft.role,
+          department_id: draft.department_id || null,
+          title: draft.title,
+          joining_date: draft.joining_date || null,
+          supervisor_id: draft.supervisor_id || null,
+        }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) saveError = result.error || 'Unable to invite this user.';
+    } else if (draft.id) {
+      const { error: updateError } = await supabase.from('profiles').update({
+        full_name: draft.full_name.trim(),
+        role: draft.role,
+        department_id: draft.department_id || null,
+        department: departments.find((department) => department.id === draft.department_id)?.name || '',
+        title: draft.title.trim(),
+        joining_date: draft.joining_date || null,
+        supervisor_id: draft.supervisor_id || null,
+        phone: draft.phone.trim(),
+        bio: draft.bio.trim(),
+      }).eq('id', draft.id);
+      if (updateError) saveError = updateError.message;
+    }
+
+    if (saveError) {
+      console.error('Unable to save team member:', saveError);
+      window.alert(saveError);
+      setSaving(false);
+      return;
+    }
+    setSaving(false);
+    setModal(null);
+    setDraft(blankDraft());
+    await loadTeam();
+  };
+
+  if (loading) return <div><TopBar title="Team" subtitle="Loading team directory" /><SybellaLoadingState text="Loading team" /></div>;
+
+  return (
+    <div>
+      <TopBar title="Team" subtitle={`${members.length} team members · interns and partners included`} />
+      <main className="space-y-5 p-4 sm:p-6">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap gap-3">
+            <label className="text-xs font-medium text-slate-600">
+              <span className="sr-only">Search team</span>
+              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people and departments" className="h-10 min-w-56 rounded-md border border-input bg-white px-3 text-sm" />
+            </label>
+            <label className="text-xs font-medium text-slate-600">
+              <span className="sr-only">Filter by access type</span>
+              <select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)} className="h-10 rounded-md border border-input bg-white px-3 text-sm">
+                <option value="all">All access types</option>
+                {members.reduce<string[]>((uniqueRoles, member) => {
+                  if (!uniqueRoles.includes(member.role)) uniqueRoles.push(member.role);
+                  return uniqueRoles;
+                }, []).sort().map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}
+              </select>
+            </label>
+          </div>
+          {canManage && <button type="button" onClick={() => { setDraft(blankDraft()); setModal('add'); }} className="inline-flex h-10 items-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800"><UserPlus size={16} /> Invite user</button>}
         </div>
 
-        {/* Team Grid */}
-        {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="bg-white rounded-xl border border-border p-5 animate-pulse">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-muted" />
-                  <div className="flex-1 space-y-2">
-                    <div className="h-3 bg-muted rounded w-3/4" />
-                    <div className="h-2.5 bg-muted rounded w-1/2" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {(filtered.length > 0 ? filtered : defaultMembers).map((member: any) => (
-              <div key={member.id || member.email} className="bg-white rounded-xl border border-border p-5 hover:shadow-md transition-shadow">
-                <div className="flex items-start gap-3 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                    <span className="text-white font-bold text-sm">{initials(member.full_name)}</span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-foreground text-sm">{member.full_name}</p>
-                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${roleColors[member.role] || 'bg-gray-100 text-gray-600'}`}>
-                      {member.role}
-                    </span>
-                  </div>
-                  {canManage && member.id && (
-                    <button
-                      onClick={() => { setModal('edit'); setEditMember(member); }}
-                      className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                    >
-                      <Edit2 size={13} className="text-muted-foreground" />
-                    </button>
-                  )}
-                </div>
+        {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</p>}
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+          <DataTable
+            columns={columns}
+            data={rows}
+            loading={false}
+            searchable={false}
+            sortable
+            pagination
+            pageSize={15}
+            bordered
+            size="md"
+            ariaLabel="Sybella Systems team directory"
+            emptyMessage={error ? 'Team directory is unavailable.' : 'No team members match this filter.'}
+            onRowClick={(row) => router.push(`/team/${row.id}`)}
+          />
+        </section>
+      </main>
 
-                <div className="space-y-1.5">
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Mail size={12} />
-                    <span className="truncate">{member.email}</span>
-                  </div>
-                  {member.phone && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <Phone size={12} />
-                      <span>{member.phone}</span>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <MapPin size={12} />
-                    <span>{member.location || 'Kigali, Rwanda'}</span>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between mt-4 pt-3 border-t border-border">
-                  <span className="text-xs text-muted-foreground">{member.department || departmentMap[member.role] || ''}</span>
-                  <div className="flex items-center gap-1">
-                    {member.is_active !== false ? (
-                      <><CheckCircle size={13} className="text-emerald-500" /><span className="text-[11px] text-emerald-600 font-medium">Active</span></>
-                    ) : (
-                      <><XCircle size={13} className="text-red-500" /><span className="text-[11px] text-red-600 font-medium">Inactive</span></>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Edit Modal */}
-      {modal === 'edit' && editMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-base font-bold text-foreground mb-4">Edit Team Member</h2>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Full Name</label>
-                <input
-                  value={editMember.full_name || ''}
-                  onChange={e => setEditMember({ ...editMember, full_name: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Role</label>
-                <select
-                  value={editMember.role || 'developer'}
-                  onChange={e => setEditMember({ ...editMember, role: e.target.value as Role })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                >
-                  {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Department</label>
-                <input
-                  value={editMember.department || ''}
-                  onChange={e => setEditMember({ ...editMember, department: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Phone</label>
-                <input
-                  value={editMember.phone || ''}
-                  onChange={e => setEditMember({ ...editMember, phone: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Bio</label>
-                <textarea
-                  value={editMember.bio || ''}
-                  onChange={e => setEditMember({ ...editMember, bio: e.target.value })}
-                  rows={2}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary resize-none"
-                />
-              </div>
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="team-dialog-title" className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5 shadow-xl sm:p-6">
+            <h2 id="team-dialog-title" className="mb-4 text-lg font-semibold text-slate-900">{modal === 'add' ? 'Invite a team member' : 'Edit team member'}</h2>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {modal === 'add' && <label className="text-xs font-medium text-slate-600">Email<input type="email" required autoComplete="email" value={draft.email} onChange={(event) => setDraft({ ...draft, email: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>}
+              <label className="text-xs font-medium text-slate-600">Full name<input required autoComplete="name" value={draft.full_name} onChange={(event) => setDraft({ ...draft, full_name: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>
+              <label className="text-xs font-medium text-slate-600">Role / access type<select value={draft.role} onChange={(event) => setDraft({ ...draft, role: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-white px-3 text-sm">{roles.map((role) => <option key={role} value={role}>{role.replaceAll('_', ' ')}</option>)}</select></label>
+              <label className="text-xs font-medium text-slate-600">Department<select value={draft.department_id} onChange={(event) => setDraft({ ...draft, department_id: event.target.value, supervisor_id: '' })} className="mt-1 h-10 w-full rounded-md border border-input bg-white px-3 text-sm"><option value="">No department</option>{departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}</select></label>
+              <label className="text-xs font-medium text-slate-600">Position / title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>
+              <label className="text-xs font-medium text-slate-600">Joining date<input type="date" value={draft.joining_date} onChange={(event) => setDraft({ ...draft, joining_date: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>
+              <label className="text-xs font-medium text-slate-600 sm:col-span-2">Supervisor / department lead<select value={draft.supervisor_id} onChange={(event) => setDraft({ ...draft, supervisor_id: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input bg-white px-3 text-sm"><option value="">Use the department lead</option>{members.filter((member) => member.is_active && member.id !== draft.id && (!draft.department_id || member.department_id === draft.department_id)).map((member) => <option key={member.id} value={member.id}>{member.full_name} · {member.department}</option>)}</select></label>
+              {modal === 'edit' && <>
+                <label className="text-xs font-medium text-slate-600">Phone<input value={draft.phone} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>
+                <label className="text-xs font-medium text-slate-600">Bio<input value={draft.bio} onChange={(event) => setDraft({ ...draft, bio: event.target.value })} className="mt-1 h-10 w-full rounded-md border border-input px-3 text-sm" /></label>
+              </>}
             </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => { setModal(null); setEditMember(null); }} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleSave} disabled={saving} className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-60">
-                {saving ? 'Saving...' : 'Save Changes'}
-              </button>
+            {modal === 'add' && <p className="mt-3 text-xs text-slate-500">The user receives a secure email invitation and sets their own password.</p>}
+            <div className="mt-6 flex justify-end gap-2">
+              <button type="button" onClick={() => setModal(null)} className="h-10 rounded-lg border px-4 text-sm">Cancel</button>
+              <button type="button" disabled={saving} onClick={() => void submit()} className="h-10 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white disabled:opacity-60">{saving ? 'Saving...' : modal === 'add' ? 'Send invitation' : 'Save changes'}</button>
             </div>
-          </div>
+          </section>
         </div>
       )}
     </div>
