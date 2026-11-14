@@ -5,16 +5,17 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
-import { primaryNavSectionsForRole, secondaryNavSectionsForRole, type NavSection } from '@/lib/rbac';
+import { navSectionsForProfile, type NavSection } from '@/lib/rbac';
 import type { Role } from '@/lib/database.types';
 import { LogOut, ChevronRight, ChevronDown, X, MoveHorizontal as MoreHorizontal } from 'lucide-react';
-import { LayoutDashboard, Briefcase, SquareCheck as CheckSquare, FolderKanban, LayoutGrid, Building2, TrendingUp, MessageSquare, ClipboardList, DollarSign, Landmark, ChartBar as BarChart3, Users, HeartPulse, Scale, Megaphone, BookOpen, Link2, CalendarRange, Wallet, ChartPie as PieChart, ScrollText, Shield, Clock, Target, Calendar, Award, Trophy, TriangleAlert } from 'lucide-react';
+import { LayoutDashboard, Briefcase, SquareCheck as CheckSquare, FolderKanban, LayoutGrid, Building2, TrendingUp, MessageSquare, ClipboardList, DollarSign, Landmark, ChartBar as BarChart3, Users, HeartPulse, Scale, Megaphone, BookOpen, Link2, CalendarRange, Wallet, ChartPie as PieChart, ScrollText, Shield, Clock, Target, Calendar, Award, Trophy, TriangleAlert, Bell, FolderOpen, Settings, FileText, KeyRound } from 'lucide-react';
 
 const ICON_MAP: Record<string, React.ElementType> = {
   LayoutDashboard, Briefcase, CheckSquare, FolderKanban, LayoutGrid, Building2,
   TrendingUp, MessageSquare, ClipboardList, DollarSign, Landmark, BarChart3,
   Users, HeartPulse, Scale, Megaphone, BookOpen, Link2, CalendarRange, Wallet,
   PieChart, ScrollText, Shield, Clock, Target, Calendar, Award, Trophy, TriangleAlert,
+  Bell, FolderOpen, Settings, FileText, KeyRound,
 };
 
 function NavIcon({ name }: { name: string }) {
@@ -63,16 +64,12 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
   const { profile, signOut } = useAuth();
   const [moreOpen, setMoreOpen] = useState(false);
 
-  const primarySections = primaryNavSectionsForRole(profile?.role);
-  const secondarySections = secondaryNavSectionsForRole(profile?.role);
+  const sections = navSectionsForProfile(profile);
 
   const initials = profile?.full_name
     ? profile.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
     : '??';
 
-  const isInSection = (sections: NavSection[]) =>
-    sections.some(s => s.items.some(i => pathname === i.href || pathname.startsWith(i.href + '/')));
-  const moreActive = isInSection(secondarySections);
 
   return (
     <>
@@ -93,7 +90,7 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-white font-bold text-sm leading-tight">Sybella Systems</p>
-            <p className="text-blue-400 text-[10px] font-semibold tracking-wide uppercase">VAC-P Platform</p>
+            <p className="text-blue-400 text-[10px] font-semibold tracking-wide uppercase">VAC-P V3</p>
           </div>
           <button onClick={onClose} className="md:hidden p-1.5 rounded-lg hover:bg-white/10 text-slate-400">
             <X size={18} />
@@ -101,32 +98,9 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
         </div>
 
         <nav aria-label="Primary navigation" className="sidebar-scroll flex-1 px-3 py-4 overflow-y-auto space-y-4">
-          {primarySections.map((section) => (
+          {sections.map((section) => (
             <SectionGroup key={section.title} section={section} pathname={pathname} onNavigate={onClose} />
           ))}
-
-          {secondarySections.length > 0 && (
-            <div className="space-y-1">
-              <button
-                onClick={() => setMoreOpen(!moreOpen)}
-                className={cn(
-                  'w-full group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium transition-all duration-150',
-                  moreActive ? 'text-white' : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                )}
-              >
-                <MoreHorizontal size={18} className="flex-shrink-0" />
-                <span className="truncate">More</span>
-                {moreOpen ? <ChevronDown size={14} className="ml-auto flex-shrink-0" /> : <ChevronRight size={14} className="ml-auto flex-shrink-0" />}
-              </button>
-              {moreOpen && (
-                <div className="space-y-4 pt-2">
-                  {secondarySections.map((section) => (
-                    <SectionGroup key={section.title} section={section} pathname={pathname} onNavigate={onClose} />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
         </nav>
 
         <div className="px-3 pb-4 pt-3 border-t border-white/5">
@@ -143,11 +117,11 @@ export function Sidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose:
             </div>
             <button
               type="button"
-              onClick={signOut}
+              onClick={() => { window.location.href = '/profile'; }}
               className="rounded-md p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-white flex-shrink-0"
-              title="Sign out"
+              title="Profile and settings"
             >
-              <LogOut size={15} />
+              <MoreHorizontal size={15} />
             </button>
           </div>
         </div>

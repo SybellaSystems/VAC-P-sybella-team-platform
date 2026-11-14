@@ -1,4 +1,5 @@
 import './globals.css';
+import '@sybellasystems/ui/dist/index.css';
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { AuthProvider } from '@/contexts/AuthContext';

@@ -4,21 +4,21 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
-import { CheckInPrompt } from '@/components/layout/CheckInPrompt';
 import { CelebrationOverlay } from '@/components/layout/CelebrationOverlay';
-import { WeeklyReportGuard } from '@/components/layout/WeeklyReportGuard';
+import { WorkspaceChrome } from '@/components/layout/WorkspaceChrome';
 import { Menu } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading, signOut } = useAuth();
   const router = useRouter();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && (!user || profile?.is_active === false || profile?.role === 'deleted')) {
+      if (user && (profile?.is_active === false || profile?.role === 'deleted')) void signOut();
       router.replace('/login');
     }
-  }, [user, loading, router]);
+  }, [user, profile?.is_active, profile?.role, loading, router, signOut]);
 
   if (loading) {
     return (
@@ -31,12 +31,13 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return null;
+  if (!user || profile?.is_active === false || profile?.role === 'deleted') return null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
-      <div className="md:ml-64">
+    <WorkspaceChrome>
+      <div className="min-h-[65vh] md:flex">
+        <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+        <div className="min-w-0 flex-1 md:ml-64">
         {/* Mobile menu button - visible only on small screens */}
         <button
           onClick={() => setMobileSidebarOpen(true)}
@@ -45,10 +46,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         >
           <Menu size={20} />
         </button>
-        <WeeklyReportGuard>{children}</WeeklyReportGuard>
-        <CheckInPrompt />
+        {children}
         <CelebrationOverlay />
+        </div>
       </div>
-    </div>
+    </WorkspaceChrome>
   );
 }
