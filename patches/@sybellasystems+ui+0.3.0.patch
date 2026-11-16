@@ -1,0 +1,29 @@
+diff --git a/node_modules/@sybellasystems/ui/dist/index.cjs b/node_modules/@sybellasystems/ui/dist/index.cjs
+--- a/node_modules/@sybellasystems/ui/dist/index.cjs
++++ b/node_modules/@sybellasystems/ui/dist/index.cjs
+@@ -433,7 +433,7 @@
+ 	return jsxRuntime.exports;
+ }
+ 
+-var jsxRuntimeExports = requireJsxRuntime();
++var jsxRuntimeExports = require('react/jsx-runtime');
+ 
+ function SybellaLoader({ size = 140, speed = 1, text, subtext, showLabel = false, reducedMotion = false, primaryColor = "#2563eb", className = "", }) {
+     const gradientId = `sybella-blue-${require$$0.useId().replace(/:/g, "")}`;
+diff --git a/node_modules/@sybellasystems/ui/dist/index.js b/node_modules/@sybellasystems/ui/dist/index.js
+--- a/node_modules/@sybellasystems/ui/dist/index.js
++++ b/node_modules/@sybellasystems/ui/dist/index.js
+@@ -1,4 +1,5 @@
+ import require$$0, { useId, useState, useMemo } from 'react';
++import { jsx, jsxs } from 'react/jsx-runtime';
+ 
+ var jsxRuntime = {exports: {}};
+ 
+@@ -432,6 +433,6 @@
+ 	return jsxRuntime.exports;
+ }
+ 
+-var jsxRuntimeExports = requireJsxRuntime();
++var jsxRuntimeExports = { jsx, jsxs };
+ 
+ function SybellaLoader({ size = 140, speed = 1, text, subtext, showLabel = false, reducedMotion = false, primaryColor = "#2563eb", className = "", }) {

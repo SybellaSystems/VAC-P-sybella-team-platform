@@ -6,10 +6,11 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { CelebrationOverlay } from '@/components/layout/CelebrationOverlay';
 import { WorkspaceChrome } from '@/components/layout/WorkspaceChrome';
+import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
 import { Menu } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile, loading, signOut } = useAuth();
+  const { user, profile, profileError, loading, signOut, refreshProfile } = useAuth();
   const router = useRouter();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -21,17 +22,26 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, profile?.is_active, profile?.role, loading, router, signOut]);
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-500">Loading VAC-P...</p>
-        </div>
-      </div>
-    );
+    return <SybellaLoadingState text="Loading VAC-P" />;
   }
 
   if (!user || profile?.is_active === false || profile?.role === 'deleted') return null;
+  if (profileError || !profile) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6">
+        <section className="max-w-lg rounded-xl border border-amber-200 bg-white p-6 text-center shadow-sm">
+          <h1 className="text-lg font-semibold text-slate-900">Unable to load your VAC-P profile</h1>
+          <p role="alert" className="mt-2 text-sm text-slate-600">{profileError || 'Your account is signed in, but its profile is not available.'}</p>
+          <button type="button" onClick={() => void refreshProfile()} className="mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">
+            Retry
+          </button>
+          <button type="button" onClick={() => void signOut()} className="ml-2 mt-4 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Sign out
+          </button>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <WorkspaceChrome>
