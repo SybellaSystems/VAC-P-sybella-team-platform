@@ -1,6 +1,6 @@
 # VAC-P — Sybella Online HQ
 
-**Version:** 3.0.0
+**Version:** 3.0.1
 
 ---
 
@@ -51,7 +51,7 @@ Additional features and integrations will continue to be introduced as the platf
 
 ## Development Status
 
-**Current Version:** 3.0.0
+**Current Version:** 3.0.1
 
 VAC-P V3 introduces the daily KPI workflow. Administrators and directors assign KPIs from **Set KPIs**; team members report numbers and proof from **My Daily Progress**; authorized supervisors review entries from **Daily Approvals**. Approved entries are locked, and rejected entries can be corrected and resubmitted.
 

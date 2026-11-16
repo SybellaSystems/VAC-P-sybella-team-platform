@@ -6,7 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Eye, EyeOff, Lock, Mail, CircleAlert as AlertCircle } from 'lucide-react';
 
 export default function LoginPage() {
-  const { signIn, signInWithProvider, sendPasswordResetEmail, user, loading } = useAuth();
+  const { signIn, signInWithProvider, sendPasswordResetEmail, user, loading, authError } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -26,24 +26,42 @@ export default function LoginPage() {
     setMessage('');
     setSubmitting(true);
 
-    if (forgotPassword) {
-      const { error } = await sendPasswordResetEmail(email);
-      if (error) {
-        setError('Unable to send password reset email.');
-      } else {
-        setMessage('Password reset instructions have been sent if your email is registered.');
-        setForgotPassword(false);
+    try {
+      if (forgotPassword) {
+        const { error } = await sendPasswordResetEmail(email);
+        if (error) {
+          setError(error.message);
+        } else {
+          setMessage('Password reset instructions have been sent if your email is registered.');
+          setForgotPassword(false);
+        }
+        return;
       }
-      setSubmitting(false);
-      return;
-    }
 
-    const { error } = await signIn(email, password);
-    if (error) {
-      setError('Invalid email or password. Please try again.');
+      const { error } = await signIn(email, password);
+      if (error) {
+        setError(error.message);
+      } else {
+        router.replace('/dashboard');
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to complete the authentication request.');
+    } finally {
       setSubmitting(false);
-    } else {
-      router.replace('/dashboard');
+    }
+  };
+
+  const handleProviderSignIn = async () => {
+    setError('');
+    setMessage('');
+    setSubmitting(true);
+    try {
+      const { error } = await signInWithProvider('google');
+      if (error) setError(error.message);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Unable to start Google sign-in.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -68,8 +86,9 @@ export default function LoginPage() {
           <div className="space-y-3">
             <button
               type="button"
-              onClick={() => void signInWithProvider('google')}
-              className="w-full flex items-center justify-center gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-muted hover:border-primary/40"
+              onClick={() => void handleProviderSignIn()}
+              disabled={submitting}
+              className="w-full flex items-center justify-center gap-3 rounded-lg border border-border bg-white px-4 py-3 text-sm font-semibold text-foreground transition hover:bg-muted hover:border-primary/40 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -86,10 +105,10 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {error && (
+          {(error || (!user && authError)) && (
             <div className="flex items-center gap-2.5 p-3.5 rounded-lg bg-destructive/8 border border-destructive/20 mb-5 mt-4">
               <AlertCircle size={16} className="text-destructive flex-shrink-0" />
-              <p className="text-sm text-destructive">{error}</p>
+              <p className="text-sm text-destructive">{error || authError}</p>
             </div>
           )}
 
