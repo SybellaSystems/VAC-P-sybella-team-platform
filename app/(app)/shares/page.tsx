@@ -249,7 +249,7 @@ export default function SharesPage() {
 
   const pricePerShare = totalIssued > 0 ? latestValuation / totalIssued : pools[0]?.current_price_per_unit || 0;
 
-  const canEdit = canManageShares(profile?.role);
+  const canEdit = canManageShares(profile);
 
   // Form Handlers
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { TopBar } from '@/components/layout/TopBar';
@@ -98,19 +98,33 @@ export default function RecognitionPage() {
   });
 
   // Calculate weekly boundaries
-  const now = new Date();
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 }); // Monday start
-  const weekEnd = endOfWeek(now, { weekStartsOn: 1 }); // Sunday end
-  const daysRemainingInWeek = differenceInDays(weekEnd, now) + 1;
+  const { weekStart, weekEnd, daysRemainingInWeek } = useMemo(() => {
+    const now = new Date();
+    const start = startOfWeek(now, { weekStartsOn: 1 });
+    const end = endOfWeek(now, { weekStartsOn: 1 });
+    return {
+      weekStart: start,
+      weekEnd: end,
+      daysRemainingInWeek: differenceInDays(end, now) + 1,
+    };
+  }, []);
 
-  useEffect(() => {
-    if (profile) {
-      fetchRecognitions();
-      fetchProfiles();
+  const checkTwiceWeeklyCelebration = useCallback((recs: EmployeeRecognition[]) => {
+    if (!profile?.id) return;
+
+    const currentWeekKey = `celebration_week_${format(weekStart, 'yyyy-MM-dd')}_${profile.id}`;
+    const storedCount = parseInt(localStorage.getItem(currentWeekKey) || '0', 10);
+    const thisWeekRecs = recs.filter((r) =>
+      isWithinInterval(new Date(r.created_at), { start: weekStart, end: weekEnd })
+    );
+
+    if (storedCount < 2 && thisWeekRecs.length > 0) {
+      setShowCelebrationModal(true);
+      localStorage.setItem(currentWeekKey, (storedCount + 1).toString());
     }
-  }, [profile]);
+  }, [profile?.id, weekStart, weekEnd]);
 
-  async function fetchRecognitions() {
+  const fetchRecognitions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -136,34 +150,23 @@ export default function RecognitionPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [checkTwiceWeeklyCelebration]);
 
-  // Handles showing team celebrations popup twice per week per user
-  function checkTwiceWeeklyCelebration(recs: EmployeeRecognition[]) {
-    if (!profile?.id) return;
-
-    const currentWeekKey = `celebration_week_${format(weekStart, 'yyyy-MM-dd')}_${profile.id}`;
-    const storedCount = parseInt(localStorage.getItem(currentWeekKey) || '0', 10);
-
-    const thisWeekRecs = recs.filter((r) =>
-      isWithinInterval(new Date(r.created_at), { start: weekStart, end: weekEnd })
-    );
-
-    // If less than 2 views logged for this user this week & there are celebrations to show
-    if (storedCount < 2 && thisWeekRecs.length > 0) {
-      setShowCelebrationModal(true);
-      localStorage.setItem(currentWeekKey, (storedCount + 1).toString());
-    }
-  }
-
-  async function fetchProfiles() {
+  const fetchProfiles = useCallback(async () => {
     try {
       const { data } = await supabase.from('profiles').select('id, full_name').order('full_name');
       setProfiles(data || []);
     } catch (err) {
       console.error('Error fetching profiles:', err);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (profile) {
+      void fetchRecognitions();
+      void fetchProfiles();
+    }
+  }, [fetchProfiles, fetchRecognitions, profile]);
 
   async function handleGiveRecognition() {
     if (!newRecognition.recipient_id) {
@@ -274,7 +277,7 @@ export default function RecognitionPage() {
               <PartyPopper className="h-6 w-6 animate-bounce" />
             </div>
             <DialogTitle className="text-xl font-extrabold text-slate-900">
-              🎉 This Week's Team Celebrations!
+              🎉 This Week&apos;s Team Celebrations!
             </DialogTitle>
             <DialogDescription className="text-xs text-slate-500">
               Here are the honors and recognitions awarded across the team this week ({format(weekStart, 'MMM d')} - {format(weekEnd, 'MMM d')})
@@ -312,7 +315,7 @@ export default function RecognitionPage() {
                           </span>
                         </div>
                         <p className="text-xs text-slate-800 font-medium leading-relaxed bg-white/60 p-2.5 rounded-lg border border-slate-100">
-                          "{rec.description}"
+                          &quot;{rec.description}&quot;
                         </p>
                       </div>
                     </div>
@@ -350,7 +353,7 @@ export default function RecognitionPage() {
               </div>
 
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-                This Week's Celebrations 🎉
+                This Week&apos;s Celebrations 🎉
               </h1>
               <p className="text-sm text-indigo-100/90 leading-relaxed">
                 Every week we highlight colleagues who made an impact. All recognitions and colors set by the recognizer are highlighted across team dashboards!

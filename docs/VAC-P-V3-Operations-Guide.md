@@ -6,6 +6,7 @@ VAC-P V3 is the Sybella Systems internal operations layer for team accountabilit
 ## Role and department model
 - MD / Admin: full visibility across departments, platform integrations, team review, and governance controls.
 - Director: administrator-level access for strategic oversight and approval controls.
+- Executive department: a user with the `executive` role assigned to the Executive department receives the same application and database administrator permissions. The role alone does not grant administrator access outside that department.
 - Department managers and leads: manage people, assign KPI targets, and review daily submissions inside their own department.
 - Team members: access only the modules relevant to their assigned department and approved platform accounts.
 - Interns: treated as normal department members with daily reporting and access scoped to their department.
@@ -20,7 +21,7 @@ Access is enforced by department membership and role rather than UI-only hiding.
 4. Sensitive settings, MD-only controls, and administration pages remain hidden from non-admin roles at the server and application levels.
 
 ## KPI workflow
-The platform follows the national-level V3 workflow used by Sybella Systems:
+The platform follows the V3 workflow used by Sybella Systems:
 - MD/admin creates the user and assigns department and supervisor.
 - MD/admin assigns individual KPIs to the employee.
 - The employee reports daily numbers and proof links.
@@ -76,18 +77,19 @@ Users can also initiate a deletion request. In this design, the system anonymize
 - Clean, classic, professional organization dashboard
 - Clear left-hand navigation grouped by section
 - Department-first context with role-based access boundaries
-- Consistent use of the reusable Sybella UI loader and data table components
+- Use shared Sybella UI components only on screens where their React 18 runtime compatibility has been verified.
 - Mobile-friendly layout and low-data-friendly pages
 - Accessible forms and clear states for approvals and reports
 
 ## Deployment checklist
 Before using the V3 release in a live environment:
 1. Apply the Supabase migration files under `supabase/migrations/`.
-2. Confirm the `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and service role environment variables are present.
-3. Register the department lead assignment model and platform account approval flow.
-4. Configure the admin user and assign the first department structure.
-5. Invite the first users and assign them to a department.
-6. Validate daily reporting, approval, and analytics flows with at least one department lead and one team user.
+2. Keep the migration order intact. `20261116120000_lock_retired_project_integrations.sql` preserves the legacy integrations table while blocking authenticated access to its stored credentials. `20261116123000_executive_department_admin_access.sql` grants administrator permissions to the Executive department role and applies the same rule to database access.
+3. Confirm the `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and service role environment variables are present.
+4. Register the department lead assignment model and platform account approval flow.
+5. Configure the admin user and assign the first department structure.
+6. Invite the first users and assign them to a department.
+7. Validate daily reporting, approval, and analytics flows with at least one department lead and one team user.
 
 ## Related files
 - `README.md`

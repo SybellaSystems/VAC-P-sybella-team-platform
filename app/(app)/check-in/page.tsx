@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -86,11 +86,7 @@ export default function CheckInOutPage() {
     lessons_learned: '',
   });
 
-  useEffect(() => {
-    if (profile) loadAll();
-  }, [profile]);
-
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     if (!profile) return;
     const [cinRes, coutRes, profsRes] = await Promise.all([
       supabase.from('daily_check_ins').select('*').eq('check_in_date', today),
@@ -116,7 +112,11 @@ export default function CheckInOutPage() {
     setTeamCheckOuts(coutMap);
 
     setLoading(false);
-  };
+  }, [profile, today]);
+
+  useEffect(() => {
+    if (profile) void loadAll();
+  }, [profile, loadAll]);
 
   const toggleMemberExpand = (id: string) => {
     setExpandedMembers(prev => ({ ...prev, [id]: !prev[id] }));
@@ -263,7 +263,7 @@ export default function CheckInOutPage() {
               {checkedInToday && (
                 <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                   <CheckCircle size={16} className="text-emerald-600" />
-                  <p className="text-xs text-emerald-700">You've checked in for today. Update anytime.</p>
+                  <p className="text-xs text-emerald-700">You&apos;ve checked in for today. Update anytime.</p>
                 </div>
               )}
               <div>
@@ -280,7 +280,7 @@ export default function CheckInOutPage() {
                 </Select>
               </div>
               <div>
-                <Label className="text-xs font-medium text-muted-foreground mb-1.5">Today's Priorities</Label>
+                <Label className="text-xs font-medium text-muted-foreground mb-1.5">Today&apos;s Priorities</Label>
                 <Textarea value={checkInForm.priorities} onChange={e => setCheckInForm({ ...checkInForm, priorities: e.target.value })} placeholder="What are your top priorities today?" rows={2} />
               </div>
               <div>
@@ -319,7 +319,7 @@ export default function CheckInOutPage() {
               {checkedOutToday && (
                 <div className="flex items-center gap-2 p-3 bg-emerald-50 rounded-lg border border-emerald-200">
                   <CheckCircle size={16} className="text-emerald-600" />
-                  <p className="text-xs text-emerald-700">You've checked out for today. Update anytime.</p>
+                  <p className="text-xs text-emerald-700">You&apos;ve checked out for today. Update anytime.</p>
                 </div>
               )}
               <div>
@@ -337,7 +337,7 @@ export default function CheckInOutPage() {
                 </div>
                 <div>
                   <Label className="text-xs font-medium text-muted-foreground mb-1.5">Outstanding Work</Label>
-                  <Textarea value={checkOutForm.outstanding_work} onChange={e => setCheckOutForm({ ...checkOutForm, outstanding_work: e.target.value })} placeholder="What's still pending?" rows={1} />
+                  <Textarea value={checkOutForm.outstanding_work} onChange={e => setCheckOutForm({ ...checkOutForm, outstanding_work: e.target.value })} placeholder="What&apos;s still pending?" rows={1} />
                 </div>
               </div>
               <div>
@@ -346,7 +346,7 @@ export default function CheckInOutPage() {
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="text-xs font-medium text-muted-foreground mb-1.5">Tomorrow's Priorities</Label>
+                  <Label className="text-xs font-medium text-muted-foreground mb-1.5">Tomorrow&apos;s Priorities</Label>
                   <Textarea value={checkOutForm.tomorrow_priorities} onChange={e => setCheckOutForm({ ...checkOutForm, tomorrow_priorities: e.target.value })} placeholder="What will you focus on tomorrow?" rows={2} />
                 </div>
                 <div>

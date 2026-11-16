@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -21,10 +21,44 @@ export default function MessagesPage() {
 
   const [showChannelList, setShowChannelList] = useState(false);
 
-  useEffect(() => {
-    loadChannels();
-    loadMembers();
+  const loadChannels = useCallback(async () => {
+    if (!profile?.id) return;
+
+    const [chanRes, memberRes] = await Promise.all([
+      supabase
+        .from('channels')
+        .select('*, project:projects(id, name)')
+        .order('name'),
+      supabase
+        .from('channel_members')
+        .select('channel_id')
+        .eq('member_id', profile.id),
+    ]);
+
+    if (chanRes.error) console.error('Error loading channels:', chanRes.error.message);
+    if (memberRes.error) console.error('Error loading channel members:', memberRes.error.message);
+
+    const ch = (chanRes.data as (Channel & { project?: { id: string; name: string } | null; type?: string })[]) || [];
+    const memberChannelIds = new Set(((memberRes.data as { channel_id: string }[]) || []).map(m => m.channel_id));
+    const accessibleChannels = ch.filter(c => c.type === 'public' || !c.type || memberChannelIds.has(c.id));
+
+    setChannels(accessibleChannels);
+    setActiveChannel((current) => current || accessibleChannels[0] || null);
   }, [profile?.id]);
+
+  const loadMembers = useCallback(async () => {
+    const { data } = await supabase.from('profiles').select('*');
+    const map: Record<string, Profile> = {};
+    ((data as Profile[]) || []).forEach(p => {
+      map[p.id] = p;
+    });
+    setMembers(map);
+  }, []);
+
+  useEffect(() => {
+    void loadChannels();
+    void loadMembers();
+  }, [loadChannels, loadMembers]);
 
   useEffect(() => {
     if (activeChannel) {
@@ -49,48 +83,6 @@ export default function MessagesPage() {
   useEffect(() => {
     setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
   }, [messages]);
-
-  const loadChannels = async () => {
-    if (!profile?.id) return;
-
-    const [chanRes, memberRes] = await Promise.all([
-      supabase
-        .from('channels')
-        .select('*, project:projects(id, name)')
-        .order('name'),
-      supabase
-        .from('channel_members')
-        .select('channel_id')
-        .eq('member_id', profile.id),
-    ]);
-
-    if (chanRes.error) console.error('Error loading channels:', chanRes.error.message);
-    if (memberRes.error) console.error('Error loading channel members:', memberRes.error.message);
-
-    const ch = (chanRes.data as (Channel & { project?: { id: string; name: string } | null; type?: string })[]) || [];
-    const memberChannelIds = new Set(((memberRes.data as { channel_id: string }[]) || []).map(m => m.channel_id));
-
-    // Filter rules:
-    // 1. Public channels are visible to everyone.
-    // 2. Private channels require explicit membership in channel_members.
-    const accessibleChannels = ch.filter(c => {
-      if (c.type === 'public' || !c.type) return true;
-      if (memberChannelIds.has(c.id)) return true;
-      return false;
-    });
-
-    setChannels(accessibleChannels);
-    if (accessibleChannels.length > 0 && !activeChannel) setActiveChannel(accessibleChannels[0]);
-  };
-
-  const loadMembers = async () => {
-    const { data } = await supabase.from('profiles').select('*');
-    const map: Record<string, Profile> = {};
-    ((data as Profile[]) || []).forEach(p => {
-      map[p.id] = p;
-    });
-    setMembers(map);
-  };
 
   const loadMessages = async (channelId: string) => {
     const { data } = await supabase

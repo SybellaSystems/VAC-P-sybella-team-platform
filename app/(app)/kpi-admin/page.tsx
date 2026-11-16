@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { isAdminProfile } from '@/lib/rbac';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -60,7 +61,7 @@ function localDateString(date: Date): string {
 
 export default function KpiAdminPage() {
   const { profile } = useAuth();
-  const canManage = profile?.role === 'admin' || profile?.role === 'director';
+  const canManage = isAdminProfile(profile);
   const [members, setMembers] = useState<Member[]>([]);
   const [kpis, setKpis] = useState<Kpi[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);

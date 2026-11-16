@@ -62,8 +62,13 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
-function isAdmin(role: Role | null | undefined): boolean {
-  return role === 'admin' || role === 'director';
+export function isAdminProfile(
+  profile: Pick<Profile, 'role' | 'department'> | null | undefined
+): boolean {
+  if (!profile) return false;
+  if (profile.role === 'admin' || profile.role === 'director') return true;
+  return profile.role === 'executive'
+    && ['executive', 'executive department'].includes(String(profile.department || '').trim().toLowerCase());
 }
 
 function allowedSections(profile: Pick<Profile, 'role' | 'department'> | null | undefined): NavSection[] {
@@ -71,8 +76,9 @@ function allowedSections(profile: Pick<Profile, 'role' | 'department'> | null | 
   return NAV_SECTIONS.map((section) => ({
     ...section,
     items: section.items.filter((item) => {
+      if (isAdminProfile(profile) && item.roles.some((role) => ADMINS.includes(role))) return true;
       if (!item.roles.includes(profile.role)) return false;
-      if (item.departments && !isAdmin(profile.role)) {
+      if (item.departments && !isAdminProfile(profile)) {
         return item.departments.some((department) => profile.department.toLowerCase().includes(department));
       }
       return true;
@@ -113,30 +119,32 @@ export function navItemsForRole(role: Role | undefined | null): NavItem[] {
   return navSectionsForRole(role).flatMap((section) => section.items);
 }
 
-export function canManageShares(role: Role | null | undefined): boolean {
-  return role === 'admin';
+type RoleDepartment = Pick<Profile, 'role' | 'department'> | null | undefined;
+
+export function canManageShares(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile);
 }
 
-export function canApproveLeave(role: Role | null | undefined): boolean {
-  return !!role && ['admin', 'director', 'hr', 'manager'].includes(role);
+export function canApproveLeave(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile) || (!!profile && ['hr', 'manager'].includes(profile.role));
 }
 
-export function canEditWiki(role: Role | null | undefined): boolean {
-  return !!role && ['admin', 'director', 'manager', 'hr', 'marketing_manager', 'legal_counsel', 'marketing', 'legal'].includes(role);
+export function canEditWiki(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile) || (!!profile && ['manager', 'hr', 'marketing_manager', 'legal_counsel', 'marketing', 'legal'].includes(profile.role));
 }
 
-export function canViewAllLeave(role: Role | null | undefined): boolean {
-  return !!role && ['admin', 'director', 'hr', 'manager', 'finance'].includes(role);
+export function canViewAllLeave(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile) || (!!profile && ['hr', 'manager', 'finance'].includes(profile.role));
 }
 
-export function canManageCredentials(role: Role | null | undefined): boolean {
-  return role === 'admin' || role === 'director';
+export function canManageCredentials(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile);
 }
 
-export function canApproveCredentialAccess(role: Role | null | undefined): boolean {
-  return !!role && ['admin', 'director'].includes(role);
+export function canApproveCredentialAccess(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile);
 }
 
-export function canViewAuditLogs(role: Role | null | undefined): boolean {
-  return !!role && ['admin', 'director'].includes(role);
+export function canViewAuditLogs(profile: RoleDepartment): boolean {
+  return isAdminProfile(profile);
 }

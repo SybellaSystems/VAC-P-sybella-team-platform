@@ -11,6 +11,8 @@ import { Switch } from '@/components/ui/switch';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { useRouter } from 'next/navigation';
+import { isAdminProfile } from '@/lib/rbac';
+import { supabase } from '@/lib/supabase';
 
 export default function NotificationsPage() {
   const { profile } = useAuth();
@@ -32,11 +34,21 @@ export default function NotificationsPage() {
   const [sending, setSending] = useState(false);
   const { toast } = useToast();
 
+  const getAuthHeaders = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    if (!data.session?.access_token) throw new Error('Sign in again before using administrator notifications.');
+    return {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${data.session.access_token}`,
+    };
+  };
+
   // 🔐 ADMIN GUARD (added)
   useEffect(() => {
     if (!profile) return;
 
-    if (profile.role !== 'admin') {
+    if (!isAdminProfile(profile)) {
       router.replace('/unauthorized');
     }
   }, [profile, router]);
@@ -49,7 +61,7 @@ export default function NotificationsPage() {
 
   // IMPORTANT FIX: only admin should trigger refresh
   useEffect(() => {
-    if (profile?.role === 'admin') {
+    if (isAdminProfile(profile)) {
       void refreshNotifications();
     }
   }, [profile, refreshNotifications]);
@@ -58,7 +70,7 @@ export default function NotificationsPage() {
     return <div className="p-6 text-sm text-muted-foreground">Loading user...</div>;
   }
 
-  if (profile.role !== 'admin') {
+  if (!isAdminProfile(profile)) {
     return <div className="p-6 text-sm text-muted-foreground">Redirecting to authorized workspace...</div>;
   }
 
@@ -72,7 +84,7 @@ export default function NotificationsPage() {
     try {
       const response = await fetch('/api/email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({
           to: recipient,
           subject,
@@ -99,7 +111,7 @@ export default function NotificationsPage() {
     try {
       const response = await fetch('/api/notifications/broadcast', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthHeaders(),
         body: JSON.stringify({ title: 'Platform update', message: broadcastMessage, type: 'info' }),
       });
 
