@@ -5,8 +5,11 @@ import { authorizeAdmin } from '@/lib/server/authorize-admin';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: Request) {
-  const authorization = await authorizeAdmin(request);
-  if ('response' in authorization) return authorization.response;
+ const authorization = await authorizeAdmin(request);
+
+if (authorization.response) {
+  return authorization.response;
+}
 
   try {
     const { to, subject, html, text, from } = await request.json();
