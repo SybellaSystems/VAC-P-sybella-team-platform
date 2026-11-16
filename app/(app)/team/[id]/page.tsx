@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { DataTable, type DataTableColumn } from '@sybellasystems/ui';
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { TopBar } from '@/components/layout/TopBar';
 import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
@@ -12,8 +11,7 @@ import type { Profile } from '@/lib/database.types';
 
 type Kpi = { id: string; user_id: string; title: string; unit: string; target: number; is_active: boolean };
 type Entry = { id: string; user_id: string; entry_date: string; status: string };
-type Item = { entry_id: string; kpi_id: string; kpi_title: string; unit: string; target_value: number; number_value: number | null };
-type HistoryRow = Record<string, unknown> & { date: string; kpi: string; value: string; status: string };
+type Item = { id: string; entry_id: string; kpi_id: string; kpi_title: string; unit: string; target_value: number; number_value: number | null };
 
 function localDateString(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -78,7 +76,7 @@ export default function TeamMemberProfilePage() {
       : { data: [], error: null };
     const allIds = Array.from(new Set([...currentEntries.map((entry) => entry.id), ...((relatedEntries.data || []) as Entry[]).map((entry) => entry.id)]));
     const itemResult = allIds.length
-      ? await supabase.from('daily_entry_items').select('entry_id,kpi_id,kpi_title,unit,target_value,number_value').in('entry_id', allIds)
+      ? await supabase.from('daily_entry_items').select('id,entry_id,kpi_id,kpi_title,unit,target_value,number_value').in('entry_id', allIds)
       : { data: [], error: null };
     if (relatedEntries.error || itemResult.error) {
       setError(relatedEntries.error?.message || itemResult.error?.message || 'Unable to load KPI history.');
@@ -123,18 +121,10 @@ export default function TeamMemberProfilePage() {
     return Object.entries(byDate).sort(([a], [b]) => a.localeCompare(b)).map(([date, value]) => ({ date: date.slice(5), value }));
   }, [entries, ownItems]);
 
-  const historyRows: HistoryRow[] = items.filter((item) => ownEntries.some((entry) => entry.id === item.entry_id)).map((item) => ({
+  const historyRows = ownItems.map((item) => ({
+    ...item,
     date: entries.find((entry) => entry.id === item.entry_id)?.entry_date || '',
-    kpi: item.kpi_title,
-    value: `${item.number_value ?? '—'} ${item.unit}`,
-    status: 'Approved',
-  }));
-  const historyColumns: DataTableColumn<HistoryRow>[] = [
-    { key: 'date', header: 'Date', sortable: true },
-    { key: 'kpi', header: 'KPI', sortable: true },
-    { key: 'value', header: 'Reported value' },
-    { key: 'status', header: 'Review status' },
-  ];
+  })).sort((first, second) => second.date.localeCompare(first.date));
 
   if (loading) return <div><TopBar title="Team profile" subtitle="Loading performance history" /><SybellaLoadingState text="Loading team profile" /></div>;
   if (!member || error) return <div><TopBar title="Team profile" subtitle="Profile access" /><p role="alert" className="m-6 rounded-lg border border-slate-200 bg-white p-5 text-sm text-slate-700">{error || 'This profile is not available.'}</p></div>;
@@ -168,7 +158,32 @@ export default function TeamMemberProfilePage() {
 
         <section className="overflow-hidden rounded-xl border bg-white">
           <div className="border-b p-5"><h2 className="font-semibold text-slate-900">Approved report history</h2><p className="mt-1 text-xs text-slate-500">Proof and approval history is visible only to authorized colleagues.</p></div>
-          <DataTable columns={historyColumns} data={historyRows} searchable sortable pagination pageSize={10} bordered size="sm" ariaLabel={`Approved KPI history for ${member.full_name}`} emptyMessage="No approved KPI history in the selected period." />
+          {historyRows.length === 0 ? (
+            <p className="p-6 text-sm text-slate-500">No approved KPI history in the selected period.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px] text-left text-sm" aria-label={`Approved KPI history for ${member.full_name}`}>
+                <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <tr>
+                    <th scope="col" className="px-4 py-3">Date</th>
+                    <th scope="col" className="px-4 py-3">KPI</th>
+                    <th scope="col" className="px-4 py-3">Reported value</th>
+                    <th scope="col" className="px-4 py-3">Review status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {historyRows.map((row) => (
+                    <tr key={row.id}>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.date}</td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{row.kpi_title}</td>
+                      <td className="px-4 py-3 text-slate-700">{row.number_value ?? '—'} {row.unit}</td>
+                      <td className="px-4 py-3"><span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700">Approved</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       </main>
     </div>

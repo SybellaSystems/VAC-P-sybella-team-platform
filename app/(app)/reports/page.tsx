@@ -92,6 +92,8 @@ export default function ReportsPage() {
   const approvedResults = summary.results.filter((result) =>
     entryIds.has(result.entry.id) && approvedIds.has(result.entry.id)
   );
+  const approvedCount = entries.filter((entry) => entry.status === 'approved').length;
+  const pendingCount = entries.filter((entry) => entry.status === 'pending').length;
   const averageAchievement = approvedResults.length
     ? approvedResults.reduce((sum, result) => sum + result.achievement, 0) / approvedResults.length
     : null;
@@ -126,9 +128,73 @@ export default function ReportsPage() {
       ]);
     });
   });
+  const departmentLabel = selectedDepartment === 'all' ? 'All accessible departments' : selectedDepartment;
 
   return (
     <div>
+      <section id="shareable-report" aria-label="Printable performance report">
+        <header className="share-report-header">
+          <div>
+            <p className="share-report-company">Sybella Systems Ltd</p>
+            <p className="share-report-contact">Integrations &amp; Systems Engineering · Rulindo, Rwanda</p>
+            <p className="share-report-contact">info@sybellasystems.co.rw · +250 723 776 020</p>
+          </div>
+          <p className="share-report-brand">VAC-P</p>
+        </header>
+        <div className="share-report-title">
+          <h1>Performance report</h1>
+          <p>{periodMode === 'monthly' ? 'Month' : 'Quarter'}: {activePeriod} <span>·</span> Department: {departmentLabel}</p>
+          <p>Generated {new Date().toLocaleDateString()}</p>
+        </div>
+        <section className="share-report-summary" aria-label="Report summary">
+          <div><span>Reports submitted</span><strong>{entries.length}</strong></div>
+          <div><span>Approved</span><strong>{approvedCount}</strong></div>
+          <div><span>Awaiting approval</span><strong>{pendingCount}</strong></div>
+          <div><span>Average approved achievement</span><strong>{averageAchievement === null ? '—' : `${Math.round(averageAchievement)}%`}</strong></div>
+        </section>
+        <h2 className="share-report-section-title">Report details</h2>
+        {entries.length === 0 ? (
+          <p className="share-report-empty">No reports were recorded for this period and department.</p>
+        ) : (
+          <table className="share-report-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Team member</th>
+                <th>Department</th>
+                <th>KPI results</th>
+                <th>Achievement</th>
+                <th>Status</th>
+                <th>Proof</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => {
+                const person = peopleById.get(entry.user_id);
+                const items = entryItems.filter((item) => item.entry_id === entry.id);
+                return (
+                  <tr key={entry.id}>
+                    <td>{entry.entry_date}</td>
+                    <td>{person?.full_name || 'Team member'}</td>
+                    <td>{person?.department || 'Unassigned'}</td>
+                    <td>{items.length ? items.map((item) => `${item.kpi_title}: ${item.number_value ?? '—'} / ${item.target_value} ${item.unit}`).join('; ') : 'No KPI values'}</td>
+                    <td>{entry.status === 'approved'
+                      ? items.map((item) => {
+                        const score = item.number_value === null ? null : calculateAchievementPercent(item.number_value, item.target_value, item.measurement_direction);
+                        return `${item.kpi_title}: ${score === null ? '—' : `${Math.round(score)}%`}`;
+                      }).join('; ') || '—'
+                      : 'Counts after approval'}</td>
+                    <td>{entry.status}</td>
+                    <td>{items.map((item) => item.proof_url).filter(Boolean).join('; ') || '—'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <footer className="share-report-footer">Sybella Systems Ltd · VAC-P · Confidential internal performance report</footer>
+      </section>
+      <div className="screen-report">
       <TopBar title="Performance reports" subtitle="Verified reporting-period summaries from VAC-P KPI records" />
       <main className="space-y-5 p-4 sm:p-6">
         <section className="flex flex-wrap items-end justify-between gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -228,6 +294,7 @@ export default function ReportsPage() {
           )}
         </section>
       </main>
+      </div>
     </div>
   );
 }

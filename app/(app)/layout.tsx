@@ -65,9 +65,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen md:flex">
       <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
-      <div className="min-w-0 flex-1 md:ml-64">
+      <div className="min-h-screen min-w-0 flex-1 md:ml-64">
         <WorkspaceChrome>
-          <div className="min-h-[65vh] min-w-0">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <div className="px-4 pt-3 md:hidden">
               <button
                 type="button"
@@ -84,6 +84,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </WorkspaceChrome>
         </div>
-    </div>
+      </div>
   );
 }
