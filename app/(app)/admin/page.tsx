@@ -1,45 +1,17 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Profile, Role } from '@/lib/database.types';
-import { UserPlus, Shield, Users, Mail, X, CircleCheck as CheckCircle, TriangleAlert as AlertTriangle } from 'lucide-react';
-
-const roleColors: Record<string, string> = {
-  admin: 'bg-red-100 text-red-700',
-  director: 'bg-amber-100 text-amber-700',
-  manager: 'bg-blue-100 text-blue-700',
-  developer: 'bg-emerald-100 text-emerald-700',
-  designer: 'bg-pink-100 text-pink-700',
-  qa: 'bg-orange-100 text-orange-700',
-  sales: 'bg-teal-100 text-teal-700',
-  hr: 'bg-violet-100 text-violet-700',
-  finance: 'bg-cyan-100 text-cyan-700',
-};
-
-const defaultTeam = [
-  { email: 'alice@sybellasystems.com', name: 'Alice Uwimana', role: 'admin' },
-  { email: 'brian@sybellasystems.com', name: 'Brian Nkurunziza', role: 'director' },
-  { email: 'christine@sybellasystems.com', name: 'Christine Mukamana', role: 'manager' },
-  { email: 'david@sybellasystems.com', name: 'David Habimana', role: 'developer' },
-  { email: 'esther@sybellasystems.com', name: 'Esther Ingabire', role: 'developer' },
-  { email: 'frank@sybellasystems.com', name: 'Frank Bizimana', role: 'designer' },
-  { email: 'grace@sybellasystems.com', name: 'Grace Uwase', role: 'qa' },
-  { email: 'henry@sybellasystems.com', name: 'Henry Ndayishimiye', role: 'sales' },
-  { email: 'isabelle@sybellasystems.com', name: 'Isabelle Mutesi', role: 'finance' },
-];
+import { UserPlus, Shield, Users, CircleCheck as CheckCircle } from 'lucide-react';
 
 export default function AdminPage() {
   const { profile } = useAuth();
   const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showInvite, setShowInvite] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '', role: 'developer', password: '' });
-  const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [error, setError] = useState('');
 
   const isAdmin = profile?.role === 'admin';
 
@@ -52,33 +24,6 @@ export default function AdminPage() {
     const { data } = await supabase.from('profiles').select('*').order('full_name');
     setMembers((data as Profile[]) || []);
     setLoading(false);
-  };
-
-  const handleInvite = async () => {
-    if (!inviteForm.email || !inviteForm.full_name || !inviteForm.password) {
-      setError('Email, name, and password are required.');
-      return;
-    }
-    setSaving(true);
-    setError('');
-
-    const { data, error: signUpError } = await supabase.auth.signUp({
-      email: inviteForm.email,
-      password: inviteForm.password,
-      options: {
-        data: { full_name: inviteForm.full_name, role: inviteForm.role },
-      },
-    });
-
-    if (signUpError) {
-      setError(signUpError.message);
-    } else {
-      setSuccess(`Account created for ${inviteForm.full_name}. They can now sign in.`);
-      setShowInvite(false);
-      setInviteForm({ email: '', full_name: '', role: 'developer', password: '' });
-      await loadMembers();
-    }
-    setSaving(false);
   };
 
   const toggleActive = async (id: string, current: boolean) => {
@@ -110,14 +55,6 @@ export default function AdminPage() {
     <div>
       <TopBar title="Admin Panel" subtitle="User management and system settings" />
       <div className="p-6 space-y-5">
-        {success && (
-          <div className="flex items-center gap-2 p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm">
-            <CheckCircle size={16} />
-            {success}
-            <button onClick={() => setSuccess('')} className="ml-auto"><X size={14} /></button>
-          </div>
-        )}
-
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4">
           <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-3">
@@ -146,31 +83,10 @@ export default function AdminPage() {
         {/* Controls */}
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-foreground">Team Members</h2>
-          <button
-            onClick={() => setShowInvite(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90"
-          >
+          <Link href="/team" className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90">
             <UserPlus size={16} />
-            Add Member
-          </button>
-        </div>
-
-        {/* Default team reference */}
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <AlertTriangle size={15} className="text-amber-600" />
-            <p className="text-sm font-semibold text-amber-800">Sybella Systems — Predefined Team</p>
-          </div>
-          <p className="text-xs text-amber-700 mb-3">Use the "Add Member" button to create accounts for these team members. They will be able to log in with their credentials.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            {defaultTeam.map(m => (
-              <div key={m.email} className="flex items-center gap-2 text-xs">
-                <div className={`w-1.5 h-1.5 rounded-full ${roleColors[m.role]?.split(' ')[0]}`} />
-                <span className="font-medium text-amber-800">{m.name}</span>
-                <span className="text-amber-600 capitalize">({m.role})</span>
-              </div>
-            ))}
-          </div>
+            Manage team &amp; invite
+          </Link>
         </div>
 
         {/* Members table */}
@@ -261,57 +177,6 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Invite Modal */}
-      {showInvite && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-bold text-foreground">Add New Team Member</h2>
-              <button onClick={() => setShowInvite(false)} className="p-1.5 rounded-lg hover:bg-muted"><X size={16} /></button>
-            </div>
-            {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-xs mb-3">
-                <AlertTriangle size={14} />
-                {error}
-              </div>
-            )}
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Full Name *</label>
-                <input value={inviteForm.full_name} onChange={e => setInviteForm({ ...inviteForm, full_name: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Email Address *</label>
-                <input type="email" value={inviteForm.email} onChange={e => setInviteForm({ ...inviteForm, email: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Role *</label>
-                <select value={inviteForm.role} onChange={e => setInviteForm({ ...inviteForm, role: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary">
-                  {['admin','director','manager','developer','designer','qa','sales','hr','finance'].map(r => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-muted-foreground mb-1">Temporary Password *</label>
-                <input type="password" value={inviteForm.password} onChange={e => setInviteForm({ ...inviteForm, password: e.target.value })}
-                  placeholder="Min 6 characters"
-                  className="w-full px-3 py-2 text-sm border border-input rounded-lg outline-none focus:ring-2 focus:ring-primary" />
-              </div>
-            </div>
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowInvite(false)} className="flex-1 py-2 text-sm font-medium border border-input rounded-lg hover:bg-muted">Cancel</button>
-              <button onClick={handleInvite} disabled={saving}
-                className="flex-1 py-2 text-sm font-semibold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60">
-                {saving ? 'Creating...' : 'Create Account'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
