@@ -59,16 +59,14 @@ export async function POST(request: Request) {
   const email = payload.email?.trim().toLowerCase();
   const fullName = payload.full_name?.trim();
   const role = payload.role || 'intern';
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !fullName || fullName.length > 160 || !ROLES.has(role)) {
-    return NextResponse.json({ error: 'Provide a valid email, full name, and supported role.' }, { status: 400 });
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !fullName || fullName.length > 160 || !ROLES.has(role) || !payload.department_id) {
+    return NextResponse.json({ error: 'Provide a valid email, full name, supported role, and department.' }, { status: 400 });
   }
-  if (payload.department_id) {
-    const { data: department, error } = await service.from('departments').select('id, name').eq('id', payload.department_id).maybeSingle();
-    if (error || !department) return NextResponse.json({ error: 'Select a valid department.' }, { status: 400 });
-  }
+  const { data: department, error: departmentError } = await service.from('departments').select('id, name').eq('id', payload.department_id).maybeSingle();
+  if (departmentError || !department) return NextResponse.json({ error: 'Select a valid department.' }, { status: 400 });
   if (payload.supervisor_id) {
     const { data: supervisor, error } = await service.from('profiles').select('id, is_active, department_id').eq('id', payload.supervisor_id).maybeSingle();
-    if (error || !supervisor?.is_active || (payload.department_id && supervisor.department_id !== payload.department_id)) {
+    if (error || !supervisor?.is_active || supervisor.department_id !== payload.department_id) {
       return NextResponse.json({ error: 'Select an active supervisor in the assigned department.' }, { status: 400 });
     }
   }
@@ -81,15 +79,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: inviteError?.message || 'Unable to invite this user.' }, { status: 400 });
   }
 
-  const { data: department } = payload.department_id
-    ? await service.from('departments').select('name').eq('id', payload.department_id).single()
-    : { data: null };
   const { error: updateError } = await service.from('profiles').update({
     full_name: fullName,
     role,
     title: payload.title?.trim().slice(0, 120) || '',
-    department_id: payload.department_id || null,
-    department: department?.name || '',
+    department_id: payload.department_id,
+    department: department.name,
     joining_date: payload.joining_date || new Date().toISOString().slice(0, 10),
     supervisor_id: payload.supervisor_id || null,
   }).eq('id', invited.user.id);
