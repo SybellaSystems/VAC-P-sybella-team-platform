@@ -1,14 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Search, Plus, Check } from 'lucide-react';
+import { Bell, Search, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 interface TopBarProps { title: string; subtitle?: string; }
 
-interface SearchResult { id: string; type: 'project' | 'task' | 'customer' | 'person'; label: string; sub: string; href: string; }
+interface SearchResult { id: string; type: 'person' | 'objective' | 'kpi'; label: string; sub: string; href: string; }
 
 export function TopBar({ title, subtitle }: TopBarProps) {
   const { profile } = useAuth();
@@ -17,6 +17,7 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const [showNotif, setShowNotif] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchError, setSearchError] = useState('');
   const [showSearch, setShowSearch] = useState(false);
   const router = useRouter();
   const notifRef = useRef<HTMLDivElement>(null);
@@ -38,46 +39,89 @@ export function TopBar({ title, subtitle }: TopBarProps) {
 
   async function loadNotifications() {
     if (!profile) return;
-    const { data } = await supabase.from('notifications').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(20);
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(20);
+    if (error) {
+      console.error('Unable to load notifications:', error.message);
+      return;
+    }
     setNotifications(data || []);
     setUnreadCount(data?.filter(n => !n.is_read).length || 0);
   }
 
   async function markAsRead(id: string) {
-    await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);
+    if (error) {
+      console.error('Unable to mark notification as read:', error.message);
+      return;
+    }
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, is_read: true } : n));
     setUnreadCount(prev => Math.max(0, prev - 1));
   }
 
   async function markAllRead() {
     if (!profile) return;
-    await supabase.from('notifications').update({ is_read: true }).eq('user_id', profile.id).eq('is_read', false);
+    const { error } = await supabase.from('notifications').update({ is_read: true }).eq('user_id', profile.id).eq('is_read', false);
+    if (error) {
+      console.error('Unable to mark notifications as read:', error.message);
+      return;
+    }
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
   }
 
   useEffect(() => {
-    if (!searchQuery.trim() || searchQuery.length < 2) { setSearchResults([]); return; }
+    if (!searchQuery.trim() || searchQuery.length < 2) { setSearchResults([]); setSearchError(''); return; }
     const q = searchQuery.toLowerCase();
+    let active = true;
     (async () => {
-      const results: SearchResult[] = [];
-      const [proj, tasks, custs, profs] = await Promise.all([
-        supabase.from('projects').select('id,name,project_code,status').ilike('name', `%${q}%`).limit(5),
-        supabase.from('tasks').select('id,title,project:projects!tasks_project_id_fkey(id,name)').ilike('title', `%${q}%`).limit(5),
-        supabase.from('customers').select('id,name,company').ilike('name', `%${q}%`).limit(3),
-        supabase.from('profiles').select('id,full_name,role').ilike('full_name', `%${q}%`).limit(3),
+      const [people, objectives, kpis] = await Promise.all([
+        supabase.from('profiles').select('id,full_name,title,department').ilike('full_name', `%${q}%`).limit(5),
+        supabase.from('objectives').select('id,title,level,department').ilike('title', `%${q}%`).limit(5),
+        supabase.from('daily_kpis').select('id,title,unit,frequency').ilike('title', `%${q}%`).limit(5),
       ]);
-      (proj.data || []).forEach((p: any) => results.push({ id: p.id, type: 'project', label: p.name, sub: p.project_code || p.status, href: `/projects/${p.id}` }));
-      (tasks.data || []).forEach((t: any) => results.push({ id: t.id, type: 'task', label: t.title, sub: `Task in ${t.project?.name || ''}`, href: `/projects/${t.project?.id}` }));
-      (custs.data || []).forEach((c: any) => results.push({ id: c.id, type: 'customer', label: c.name, sub: c.company || 'Customer', href: '/customers' }));
-      (profs.data || []).forEach((p: any) => results.push({ id: p.id, type: 'person', label: p.full_name, sub: p.role, href: '/team' }));
+      const queryError = people.error || objectives.error || kpis.error;
+      if (queryError) {
+        console.error('Unable to search VAC-P data:', queryError.message);
+        if (active) {
+          setSearchError('Search is temporarily unavailable.');
+          setSearchResults([]);
+        }
+        return;
+      }
+      if (!active) return;
+      const results: SearchResult[] = [];
+      (people.data || []).forEach((person) => results.push({
+        id: person.id,
+        type: 'person',
+        label: person.full_name,
+        sub: [person.title, person.department].filter(Boolean).join(' · ') || 'Team member',
+        href: '/team',
+      }));
+      (objectives.data || []).forEach((objective) => results.push({
+        id: objective.id,
+        type: 'objective',
+        label: objective.title,
+        sub: [objective.level, objective.department].filter(Boolean).join(' · '),
+        href: '/goals',
+      }));
+      (kpis.data || []).forEach((kpi) => results.push({
+        id: kpi.id,
+        type: 'kpi',
+        label: kpi.title,
+        sub: `${kpi.unit} · ${kpi.frequency}`,
+        href: '/analytics',
+      }));
+      setSearchError('');
       setSearchResults(results);
     })();
+    return () => { active = false; };
   }, [searchQuery]);
 
   const greeting = () => { const h = new Date().getHours(); if (h < 12) return 'Good morning'; if (h < 17) return 'Good afternoon'; return 'Good evening'; };
-  const initials = profile?.full_name ? profile.full_name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2) : '?';
-  const typeIcon = (t: string) => t === 'project' ? 'P' : t === 'task' ? 'T' : t === 'customer' ? 'C' : 'U';
+  const typeIcon = (t: string) => t === 'objective' ? 'O' : t === 'kpi' ? 'K' : 'P';
+  const initials = profile?.full_name
+    ? profile.full_name.split(/\s+/).filter(Boolean).map((name) => name[0]).join('').toUpperCase().slice(0, 2)
+    : '?';
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 sticky top-0 z-20">
@@ -97,9 +141,9 @@ export function TopBar({ title, subtitle }: TopBarProps) {
             placeholder="Search..."
             className="pl-9 pr-3 py-1.5 text-sm bg-slate-100 rounded-lg border-0 outline-none focus:ring-2 focus:ring-blue-500/30 focus:bg-white w-32 sm:w-48 md:w-64 transition-all"
           />
-          {showSearch && searchResults.length > 0 && (
+          {showSearch && searchQuery.length >= 2 && (
             <div className="absolute top-full mt-1 left-0 right-0 bg-white rounded-xl shadow-lg border border-slate-200 max-h-80 overflow-y-auto z-50">
-              {searchResults.map(r => (
+              {searchError ? <p role="alert" className="px-4 py-3 text-sm text-red-700">{searchError}</p> : searchResults.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">No matching people, objectives, or KPIs.</p> : searchResults.map(r => (
                 <button key={r.id + r.type} onClick={() => { router.push(r.href); setShowSearch(false); setSearchQuery(''); }}
                   className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left border-b border-slate-100 last:border-0">
                   <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -109,10 +153,6 @@ export function TopBar({ title, subtitle }: TopBarProps) {
                 </button>))}
             </div>)}
         </div>
-
-        <button onClick={() => router.push('/projects/new')} className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-          <Plus size={14} /> New Project
-        </button>
 
         {/* Notifications */}
         <div className="relative" ref={notifRef}>

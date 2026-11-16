@@ -243,7 +243,7 @@ export default function AdminPage() {
           <h3 className="font-semibold text-foreground text-sm mb-4">System Information</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
             {[
-              { label: 'Platform', value: 'VAC-P v3.0.1' },
+              { label: 'Platform', value: 'VAC-P v3.0.2' },
               { label: 'Company', value: 'Sybella Systems Ltd' },
               { label: 'Location', value: 'Kigali, Rwanda' },
               { label: 'Database', value: 'Supabase (PostgreSQL)' },

@@ -1,18 +1,21 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { CelebrationOverlay } from '@/components/layout/CelebrationOverlay';
 import { WorkspaceChrome } from '@/components/layout/WorkspaceChrome';
 import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
+import { isProfileRouteAllowed } from '@/lib/rbac';
 import { Menu } from 'lucide-react';
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, profile, profileError, loading, signOut, refreshProfile } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const routeAllowed = isProfileRouteAllowed(profile, pathname);
 
   useEffect(() => {
     if (!loading && (!user || profile?.is_active === false || profile?.role === 'deleted')) {
@@ -40,6 +43,22 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </button>
         </section>
       </main>
+    );
+  }
+
+  if (!routeAllowed) {
+    return (
+      <WorkspaceChrome>
+        <main className="flex min-h-[65vh] items-center justify-center p-6">
+          <section className="max-w-lg rounded-xl border border-slate-200 bg-white p-6 text-center shadow-sm">
+            <h1 className="text-lg font-semibold text-slate-900">This page is not available in your workspace</h1>
+            <p className="mt-2 text-sm text-slate-600">Your access is limited to the modules assigned to your role and organization.</p>
+            <button type="button" onClick={() => router.replace('/dashboard')} className="mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-800">
+              Return to dashboard
+            </button>
+          </section>
+        </main>
+      </WorkspaceChrome>
     );
   }
 
