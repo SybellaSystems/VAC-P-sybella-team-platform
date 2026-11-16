@@ -66,6 +66,8 @@ export default function KpiAdminPage() {
   const [kpis, setKpis] = useState<Kpi[]>([]);
   const [objectives, setObjectives] = useState<Objective[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
+  const [assignmentMode, setAssignmentMode] = useState<'department' | 'individual'>('department');
+  const [selectedDepartment, setSelectedDepartment] = useState('');
   const [draft, setDraft] = useState<KpiDraft>(emptyDraft);
   const [edits, setEdits] = useState<Record<string, KpiDraft>>({});
   const [loading, setLoading] = useState(true);
@@ -99,6 +101,8 @@ export default function KpiAdminPage() {
     setKpis(allKpis);
     setObjectives((objectiveResult.data || []) as Objective[]);
     setSelectedUserId((current) => current && activeMembers.some((member) => member.id === current) ? current : activeMembers[0]?.id || '');
+    const availableDepartments = [...new Set(activeMembers.map((member) => member.department?.trim()).filter((department): department is string => Boolean(department)))].sort((a, b) => a.localeCompare(b));
+    setSelectedDepartment((current) => current && availableDepartments.includes(current) ? current : availableDepartments[0] || '');
     setEdits(Object.fromEntries(allKpis.map((kpi) => [kpi.id, {
       title: kpi.title,
       description: kpi.description || '',
@@ -119,13 +123,18 @@ export default function KpiAdminPage() {
   }, [loadData]);
 
   const selectedMember = members.find((member) => member.id === selectedUserId);
+  const departments = useMemo(
+    () => [...new Set(members.map((member) => member.department?.trim()).filter((department): department is string => Boolean(department)))].sort((a, b) => a.localeCompare(b)),
+    [members]
+  );
+  const departmentMembers = members.filter((member) => member.department?.trim().toLowerCase() === selectedDepartment.trim().toLowerCase());
   const selectedKpis = useMemo(
     () => kpis.filter((kpi) => kpi.user_id === selectedUserId).sort((a, b) => a.title.localeCompare(b.title)),
     [kpis, selectedUserId]
   );
 
   const addKpi = async () => {
-    if (!profile || !selectedUserId || saving) return;
+    if (!profile || saving) return;
     if (!draft.title.trim() || !draft.unit.trim() || !draft.category.trim() || (draft.proof_required && !draft.proof_type.trim())) {
       toast.error('KPI title, category, unit, and any required proof type are required.');
       return;
@@ -134,9 +143,23 @@ export default function KpiAdminPage() {
       toast.error('Target must be a non-negative number.');
       return;
     }
+
+    const targetMembers = assignmentMode === 'department'
+      ? departmentMembers
+      : members.filter((member) => member.id === selectedUserId);
+
+    if (assignmentMode === 'department' && !selectedDepartment) {
+      toast.error('Select a department before assigning this KPI.');
+      return;
+    }
+    if (targetMembers.length === 0) {
+      toast.error(assignmentMode === 'department' ? 'There are no active members in this department.' : 'Select an active team member.');
+      return;
+    }
+
     setSaving(true);
-    const { error: saveError } = await supabase.from('daily_kpis').insert({
-      user_id: selectedUserId,
+    const assignmentRows = targetMembers.map((member) => ({
+      user_id: member.id,
       title: draft.title.trim(),
       description: draft.description.trim(),
       category: draft.category.trim(),
@@ -149,12 +172,18 @@ export default function KpiAdminPage() {
       proof_type: draft.proof_type.trim(),
       active_from: localDateString(new Date()),
       created_by: profile.id,
-    });
+    }));
+
+    const { error: saveError } = await supabase.from('daily_kpis').insert(assignmentRows);
     if (saveError) {
       console.error('Failed to assign KPI:', saveError);
       toast.error(saveError.message || 'Could not assign KPI.');
     } else {
-      toast.success(`KPI assigned to ${selectedMember?.full_name || 'team member'}.`);
+      toast.success(
+        assignmentMode === 'department'
+          ? `KPI assigned to ${targetMembers.length} active member${targetMembers.length === 1 ? '' : 's'} in ${selectedDepartment}.`
+          : `KPI assigned to ${targetMembers[0].full_name}.`
+      );
       setDraft(emptyDraft);
       await loadData();
     }
@@ -260,6 +289,55 @@ export default function KpiAdminPage() {
               <Plus size={18} className="text-blue-600" />
               <h2 className="font-semibold text-slate-900">Assign a KPI</h2>
             </div>
+            <div className="mb-4 grid gap-3 rounded-lg bg-slate-50 p-3 sm:grid-cols-2">
+              <div>
+                <label htmlFor="kpi-assignment-mode" className="mb-1 block text-xs font-medium text-slate-600">Assignment scope</label>
+                <select
+                  id="kpi-assignment-mode"
+                  value={assignmentMode}
+                  onChange={(event) => setAssignmentMode(event.target.value as 'department' | 'individual')}
+                  className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm"
+                >
+                  <option value="department">Entire department (default)</option>
+                  <option value="individual">One individual</option>
+                </select>
+              </div>
+              {assignmentMode === 'department' ? (
+                <div>
+                  <label htmlFor="kpi-assignment-department" className="mb-1 block text-xs font-medium text-slate-600">Department</label>
+                  <select
+                    id="kpi-assignment-department"
+                    value={selectedDepartment}
+                    onChange={(event) => setSelectedDepartment(event.target.value)}
+                    disabled={loading || departments.length === 0}
+                    className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm disabled:opacity-50"
+                  >
+                    {departments.length === 0 && <option value="">No departments available</option>}
+                    {departments.map((department) => (
+                      <option key={department} value={department}>{department}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    This KPI will be assigned to {departmentMembers.length} active {departmentMembers.length === 1 ? 'member' : 'members'}.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label htmlFor="kpi-individual-target" className="mb-1 block text-xs font-medium text-slate-600">Individual</label>
+                  <select
+                    id="kpi-individual-target"
+                    value={selectedUserId}
+                    onChange={(event) => setSelectedUserId(event.target.value)}
+                    disabled={loading || members.length === 0}
+                    className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm disabled:opacity-50"
+                  >
+                    {members.map((member) => (
+                      <option key={member.id} value={member.id}>{member.full_name} · {member.department || 'No department'}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label htmlFor="new-kpi-title" className="mb-1 block text-xs font-medium text-slate-600">KPI title</label>
@@ -314,8 +392,8 @@ export default function KpiAdminPage() {
               </label>
             </div>
             <div className="mt-4 flex justify-end">
-              <Button onClick={() => void addKpi()} disabled={!selectedUserId || saving || loading}>
-                <Plus size={15} className="mr-2" /> Assign KPI
+              <Button onClick={() => void addKpi()} disabled={saving || loading || (assignmentMode === 'department' ? !selectedDepartment || departmentMembers.length === 0 : !selectedUserId)}>
+                <Plus size={15} className="mr-2" /> {assignmentMode === 'department' ? 'Assign to department' : 'Assign to individual'}
               </Button>
             </div>
           </div>
