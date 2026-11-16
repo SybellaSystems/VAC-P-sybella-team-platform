@@ -91,7 +91,7 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
   const joined = useMemo(() => profile?.joining_date || profile?.joined_at?.slice(0, 10), [profile?.joining_date, profile?.joined_at]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="flex min-h-screen flex-col bg-slate-50">
       <ActivityTracker />
       <header className="border-b border-slate-200 bg-white px-4 py-3 sm:px-6">
         <div className="mx-auto flex max-w-[1600px] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -131,8 +131,10 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </header>
-      {children}
-      <PlatformDock />
+      <div className="flex-1">{children}</div>
+      <div className="mt-auto">
+        <PlatformDock />
+      </div>
     </div>
   );
 }
