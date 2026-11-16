@@ -5,6 +5,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { isAdminProfile } from '@/lib/rbac';
 
 type Department = { id: string; name: string; category: string; lead_user_id: string | null };
 type Member = { id: string; full_name: string; department_id: string | null; is_active: boolean };
@@ -13,7 +14,7 @@ const categories = ['executive', 'marketing', 'technical', 'legal', 'project', '
 
 export default function DepartmentsAdminPage() {
   const { profile } = useAuth();
-  const canManage = profile?.role === 'admin' || profile?.role === 'director';
+  const canManage = isAdminProfile(profile);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [name, setName] = useState('');

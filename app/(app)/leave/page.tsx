@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -49,13 +49,7 @@ export default function LeavePage() {
     reason: '',
   });
 
-  useEffect(() => {
-    if (profile) {
-      fetchLeaveRequests();
-    }
-  }, [profile]);
-
-  async function fetchLeaveRequests() {
+  const fetchLeaveRequests = useCallback(async () => {
     setLoading(true);
     try {
       let query = supabase.from('leave_requests').select(`
@@ -68,7 +62,7 @@ export default function LeavePage() {
         )
       `);
 
-      if (!canViewAllLeave(profile?.role)) {
+      if (!canViewAllLeave(profile)) {
         query = query.eq('member_id', profile?.id);
       }
 
@@ -82,7 +76,11 @@ export default function LeavePage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [profile]);
+
+  useEffect(() => {
+    if (profile) void fetchLeaveRequests();
+  }, [fetchLeaveRequests, profile]);
 
   async function handleSubmitRequest() {
     if (!profile) return;
@@ -151,8 +149,8 @@ export default function LeavePage() {
 
   const myRequests = leaveRequests.filter(r => r.member_id === profile?.id);
   const pendingRequests = leaveRequests.filter(r => r.status === 'pending');
-  const canApprove = canApproveLeave(profile?.role);
-  const canViewAll = canViewAllLeave(profile?.role);
+  const canApprove = canApproveLeave(profile);
+  const canViewAll = canViewAllLeave(profile);
 
   const getStatusColor = (status: string) => {
     switch (status) {

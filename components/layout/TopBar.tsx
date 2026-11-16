@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Bell, Search, Check } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -23,10 +23,20 @@ export function TopBar({ title, subtitle }: TopBarProps) {
   const notifRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  const loadNotifications = useCallback(async () => {
     if (!profile) return;
-    loadNotifications();
+    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(20);
+    if (error) {
+      console.error('Unable to load notifications:', error.message);
+      return;
+    }
+    setNotifications(data || []);
+    setUnreadCount(data?.filter(n => !n.is_read).length || 0);
   }, [profile]);
+
+  useEffect(() => {
+    if (profile) void loadNotifications();
+  }, [loadNotifications, profile]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -36,17 +46,6 @@ export function TopBar({ title, subtitle }: TopBarProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  async function loadNotifications() {
-    if (!profile) return;
-    const { data, error } = await supabase.from('notifications').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(20);
-    if (error) {
-      console.error('Unable to load notifications:', error.message);
-      return;
-    }
-    setNotifications(data || []);
-    setUnreadCount(data?.filter(n => !n.is_read).length || 0);
-  }
 
   async function markAsRead(id: string) {
     const { error } = await supabase.from('notifications').update({ is_read: true }).eq('id', id);

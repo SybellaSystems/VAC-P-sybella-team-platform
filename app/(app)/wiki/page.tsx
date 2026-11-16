@@ -132,7 +132,7 @@ export default function WikiPage() {
     page.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const canEdit = canEditWiki(profile?.role);
+  const canEdit = canEditWiki(profile);
 
   if (loading) {
     return (

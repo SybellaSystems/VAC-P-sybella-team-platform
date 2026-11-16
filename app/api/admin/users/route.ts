@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { isAdminProfile } from '@/lib/rbac';
 
 export const runtime = 'nodejs';
 
@@ -33,11 +34,11 @@ export async function POST(request: Request) {
   });
   const { data: actor, error: actorError } = await service
     .from('profiles')
-    .select('role, is_active')
+    .select('role, department, is_active')
     .eq('id', authData.user.id)
     .maybeSingle();
   if (actorError) return NextResponse.json({ error: 'Unable to verify administrator access.' }, { status: 500 });
-  if (!actor?.is_active || !['admin', 'director'].includes(actor.role)) {
+  if (!actor?.is_active || !isAdminProfile(actor)) {
     return NextResponse.json({ error: 'Only administrators and directors can invite users.' }, { status: 403 });
   }
 

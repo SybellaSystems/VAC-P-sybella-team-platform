@@ -1,5 +1,3 @@
-DROP TABLE IF EXISTS public.project_integrations;
-
 ALTER TABLE public.objectives
   ADD COLUMN IF NOT EXISTS department_id uuid REFERENCES public.departments(id) ON DELETE SET NULL;
 

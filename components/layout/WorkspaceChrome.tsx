@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -44,7 +45,7 @@ function PlatformDock() {
   const [accounts, setAccounts] = useState<PlatformAccount[]>([]);
 
   useEffect(() => {
-    if (!profile) return;
+    if (!profile?.id) return;
     let active = true;
     supabase.from('platform_accounts').select('id, platform_name, login_url').eq('is_active', true).order('platform_name')
       .then(({ data, error }) => {
@@ -97,7 +98,7 @@ export function WorkspaceChrome({ children }: { children: React.ReactNode }) {
         <div className="mx-auto flex max-w-[1600px] flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 text-sm font-bold text-slate-700">
-              {profile?.avatar_url ? <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" /> : initials(profile?.full_name)}
+              {profile?.avatar_url ? <Image src={profile.avatar_url} alt="" fill sizes="44px" className="object-cover" /> : initials(profile?.full_name)}
             </div>
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-slate-900">{profile?.full_name || 'Team member'}</p>

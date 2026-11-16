@@ -8,6 +8,7 @@ import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import type { Profile } from '@/lib/database.types';
+import { isAdminProfile } from '@/lib/rbac';
 
 type Department = { id: string; name: string };
 type MemberDraft = {
@@ -38,7 +39,7 @@ const blankDraft = (): MemberDraft => ({
 export default function TeamPage() {
   const { profile } = useAuth();
   const router = useRouter();
-  const canManage = profile?.role === 'admin' || profile?.role === 'director';
+  const canManage = isAdminProfile(profile);
   const [members, setMembers] = useState<Profile[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [query, setQuery] = useState('');

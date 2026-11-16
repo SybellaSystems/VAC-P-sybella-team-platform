@@ -6,6 +6,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import type { Profile, Role } from '@/lib/database.types';
+import { isAdminProfile } from '@/lib/rbac';
 import { UserPlus, Shield, Users, CircleCheck as CheckCircle } from 'lucide-react';
 
 export default function AdminPage() {
@@ -13,7 +14,7 @@ export default function AdminPage() {
   const [members, setMembers] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin = isAdminProfile(profile);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -74,8 +75,8 @@ export default function AdminPage() {
           <div className="bg-white rounded-xl border border-border p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center"><Shield size={18} className="text-red-600" /></div>
             <div>
-              <p className="text-xl font-bold text-foreground">{members.filter(m => m.role === 'admin').length}</p>
-              <p className="text-xs text-muted-foreground">Admins</p>
+              <p className="text-xl font-bold text-foreground">{members.filter(isAdminProfile).length}</p>
+              <p className="text-xs text-muted-foreground">Administrators</p>
             </div>
           </div>
         </div>

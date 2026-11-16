@@ -555,5 +555,4 @@ export type ExtendedTask = Task & {
 };
 
 // Supabase Database type - uses any for simplicity with the supabase-js client
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Database = any;

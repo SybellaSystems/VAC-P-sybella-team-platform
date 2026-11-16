@@ -55,7 +55,7 @@ Additional features and integrations will continue to be introduced as the platf
 
 VAC-P V3 introduces the daily KPI workflow. Administrators and directors assign KPIs from **Set KPIs**; team members report numbers and proof from **My Daily Progress**; authorized supervisors review entries from **Daily Approvals**. Approved entries are locked, and rejected entries can be corrected and resubmitted.
 
-The migration `supabase/migrations/20261112000000_vacp_v3_daily_kpi_workflow.sql` adds the workflow tables, review functions, profile supervisor fields, and row-level access policies. Apply the migration to the Supabase project before using the V3 pages.
+Apply the migrations under `supabase/migrations/` in order before using the V3 pages. The V3 migrations add the daily KPI workflow, department-scoped documents and activity, and performance reporting policies. The final migration preserves the retired `project_integrations` table but blocks authenticated access to its stored credentials.
 
 The department-scoped platform launcher, Google Drive mirror, and automated email/WhatsApp notifications described in the broader V3 flow are not part of this release yet.
 
@@ -96,6 +96,14 @@ Build for production:
 
 ```bash
 npm run build
+```
+
+Run local quality checks:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
 ```
 
 ---

@@ -7,6 +7,7 @@ import { TopBar } from '@/components/layout/TopBar';
 import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { isAdminProfile } from '@/lib/rbac';
 
 type Department = { id: string; name: string };
 type DriveFolder = { id: string; department_id: string; parent_id: string | null; name: string; created_by: string; created_at: string };
@@ -17,7 +18,7 @@ type DocumentRow = Record<string, unknown> & { id: string; title: string; by: st
 
 export default function DrivePage() {
   const { profile } = useAuth();
-  const canManageFolders = profile?.role === 'admin' || profile?.role === 'director';
+  const canManageFolders = isAdminProfile(profile);
   const canWrite = profile?.role !== 'partner';
   const [departments, setDepartments] = useState<Department[]>([]);
   const [folders, setFolders] = useState<DriveFolder[]>([]);
@@ -36,7 +37,7 @@ export default function DrivePage() {
   const [fileForm, setFileForm] = useState({ title: '', drive_url: '', preview_url: '', mime_type: '' });
 
   const loadData = useCallback(async () => {
-    if (!profile) return;
+    if (!profile?.id) return;
     setLoading(true);
     setError('');
     const [departmentResult, folderResult, documentResult, profileResult] = await Promise.all([
