@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Plus, Save, ShieldAlert, Target, UserRound } from 'lucide-react';
 
@@ -23,9 +24,13 @@ type Kpi = {
   id: string;
   user_id: string;
   title: string;
+  description: string;
+  category: string;
   unit: string;
   target: number;
   frequency: 'daily' | 'weekly' | 'monthly';
+  measurement_direction: 'higher' | 'lower' | 'binary';
+  objective_id: string | null;
   proof_required: boolean;
   proof_type: string;
   active_from: string;
@@ -33,13 +38,18 @@ type Kpi = {
   is_active: boolean;
 };
 
-type KpiDraft = Pick<Kpi, 'title' | 'unit' | 'target' | 'frequency' | 'proof_required' | 'proof_type'>;
+type Objective = { id: string; title: string; level: string; status: string };
+type KpiDraft = Pick<Kpi, 'title' | 'description' | 'category' | 'unit' | 'target' | 'frequency' | 'measurement_direction' | 'objective_id' | 'proof_required' | 'proof_type'>;
 
 const emptyDraft: KpiDraft = {
   title: '',
+  description: '',
+  category: 'Operations',
   unit: 'count',
   target: 1,
   frequency: 'daily',
+  measurement_direction: 'higher',
+  objective_id: null,
   proof_required: true,
   proof_type: 'URL',
 };
@@ -53,6 +63,7 @@ export default function KpiAdminPage() {
   const canManage = profile?.role === 'admin' || profile?.role === 'director';
   const [members, setMembers] = useState<Member[]>([]);
   const [kpis, setKpis] = useState<Kpi[]>([]);
+  const [objectives, setObjectives] = useState<Objective[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [draft, setDraft] = useState<KpiDraft>(emptyDraft);
   const [edits, setEdits] = useState<Record<string, KpiDraft>>({});
@@ -67,13 +78,15 @@ export default function KpiAdminPage() {
     }
     setLoading(true);
     setError('');
-    const [memberResult, kpiResult] = await Promise.all([
+    const [memberResult, kpiResult, objectiveResult] = await Promise.all([
       supabase.from('profiles').select('id, full_name, email, role, department, is_active').order('full_name'),
       supabase.from('daily_kpis').select('*').order('created_at', { ascending: false }),
+      supabase.from('objectives').select('id, title, level, status').eq('status', 'active').order('title'),
     ]);
-    if (memberResult.error || kpiResult.error) {
-      const message = memberResult.error?.message || kpiResult.error?.message || 'Failed to load KPI assignments.';
-      console.error('Failed to load KPI assignments:', memberResult.error || kpiResult.error);
+    if (memberResult.error || kpiResult.error || objectiveResult.error) {
+      const issue = memberResult.error || kpiResult.error || objectiveResult.error;
+      const message = issue?.message || 'Failed to load KPI assignments.';
+      console.error('Failed to load KPI assignments:', issue);
       setError(message);
       setLoading(false);
       return;
@@ -83,12 +96,17 @@ export default function KpiAdminPage() {
     const allKpis = (kpiResult.data || []) as Kpi[];
     setMembers(activeMembers);
     setKpis(allKpis);
+    setObjectives((objectiveResult.data || []) as Objective[]);
     setSelectedUserId((current) => current && activeMembers.some((member) => member.id === current) ? current : activeMembers[0]?.id || '');
     setEdits(Object.fromEntries(allKpis.map((kpi) => [kpi.id, {
       title: kpi.title,
+      description: kpi.description || '',
+      category: kpi.category || 'Operations',
       unit: kpi.unit,
       target: kpi.target,
       frequency: kpi.frequency,
+      measurement_direction: kpi.measurement_direction || 'higher',
+      objective_id: kpi.objective_id,
       proof_required: kpi.proof_required,
       proof_type: kpi.proof_type,
     }])));
@@ -107,8 +125,8 @@ export default function KpiAdminPage() {
 
   const addKpi = async () => {
     if (!profile || !selectedUserId || saving) return;
-    if (!draft.title.trim() || !draft.unit.trim() || !draft.proof_type.trim()) {
-      toast.error('KPI title, unit, and proof type are required.');
+    if (!draft.title.trim() || !draft.unit.trim() || !draft.category.trim() || (draft.proof_required && !draft.proof_type.trim())) {
+      toast.error('KPI title, category, unit, and any required proof type are required.');
       return;
     }
     if (!Number.isFinite(Number(draft.target)) || Number(draft.target) < 0) {
@@ -119,9 +137,13 @@ export default function KpiAdminPage() {
     const { error: saveError } = await supabase.from('daily_kpis').insert({
       user_id: selectedUserId,
       title: draft.title.trim(),
+      description: draft.description.trim(),
+      category: draft.category.trim(),
       unit: draft.unit.trim(),
       target: Number(draft.target),
       frequency: draft.frequency,
+      measurement_direction: draft.measurement_direction,
+      objective_id: draft.objective_id,
       proof_required: draft.proof_required,
       proof_type: draft.proof_type.trim(),
       active_from: localDateString(new Date()),
@@ -140,15 +162,19 @@ export default function KpiAdminPage() {
 
   const saveKpi = async (kpi: Kpi) => {
     const update = edits[kpi.id];
-    if (!update || !update.title.trim() || !update.unit.trim() || !update.proof_type.trim() || Number(update.target) < 0) {
-      toast.error('Enter a title, unit, proof type, and non-negative target.');
+    if (!update || !update.title.trim() || !update.unit.trim() || !update.category.trim() || !Number.isFinite(Number(update.target)) || Number(update.target) < 0 || (update.proof_required && !update.proof_type.trim())) {
+      toast.error('Enter a title, category, unit, required proof type, and non-negative target.');
       return;
     }
     const { error: saveError } = await supabase.from('daily_kpis').update({
       title: update.title.trim(),
+      description: update.description.trim(),
+      category: update.category.trim(),
       unit: update.unit.trim(),
       target: Number(update.target),
       frequency: update.frequency,
+      measurement_direction: update.measurement_direction,
+      objective_id: update.objective_id,
       proof_required: update.proof_required,
       proof_type: update.proof_type.trim(),
       updated_at: new Date().toISOString(),
@@ -238,6 +264,14 @@ export default function KpiAdminPage() {
                 <label htmlFor="new-kpi-title" className="mb-1 block text-xs font-medium text-slate-600">KPI title</label>
                 <Input id="new-kpi-title" value={draft.title} placeholder="e.g. Pull requests merged" onChange={(event) => setDraft({ ...draft, title: event.target.value })} maxLength={160} />
               </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="new-kpi-description" className="mb-1 block text-xs font-medium text-slate-600">Description</label>
+                <Input id="new-kpi-description" value={draft.description} placeholder="What outcome does this measure?" onChange={(event) => setDraft({ ...draft, description: event.target.value })} maxLength={500} />
+              </div>
+              <div>
+                <label htmlFor="new-kpi-category" className="mb-1 block text-xs font-medium text-slate-600">Category</label>
+                <Input id="new-kpi-category" value={draft.category} placeholder="Engineering, Sales..." onChange={(event) => setDraft({ ...draft, category: event.target.value })} maxLength={80} />
+              </div>
               <div>
                 <label htmlFor="new-kpi-unit" className="mb-1 block text-xs font-medium text-slate-600">Unit</label>
                 <Input id="new-kpi-unit" value={draft.unit} placeholder="count, RWF, %" onChange={(event) => setDraft({ ...draft, unit: event.target.value })} maxLength={32} />
@@ -252,6 +286,21 @@ export default function KpiAdminPage() {
                   <option value="daily">Per day</option>
                   <option value="weekly">Per week</option>
                   <option value="monthly">Per month</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="new-kpi-direction" className="mb-1 block text-xs font-medium text-slate-600">Success direction</label>
+                <select id="new-kpi-direction" value={draft.measurement_direction} onChange={(event) => setDraft({ ...draft, measurement_direction: event.target.value as KpiDraft['measurement_direction'] })} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm">
+                  <option value="higher">Higher is better</option>
+                  <option value="lower">Lower is better</option>
+                  <option value="binary">Binary target</option>
+                </select>
+              </div>
+              <div>
+                <label htmlFor="new-kpi-objective" className="mb-1 block text-xs font-medium text-slate-600">Linked objective</label>
+                <select id="new-kpi-objective" value={draft.objective_id || ''} onChange={(event) => setDraft({ ...draft, objective_id: event.target.value || null })} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm">
+                  <option value="">No linked objective</option>
+                  {objectives.map((objective) => <option key={objective.id} value={objective.id}>{objective.title} · {objective.level}</option>)}
                 </select>
               </div>
               <div>
@@ -303,6 +352,10 @@ export default function KpiAdminPage() {
                         <label htmlFor={`title-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">KPI</label>
                         <Input id={`title-${kpi.id}`} value={edit.title} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, title: event.target.value } })} />
                       </div>
+                      <div className="sm:col-span-2 lg:col-span-4">
+                        <label htmlFor={`description-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Description</label>
+                        <Textarea id={`description-${kpi.id}`} value={edit.description} disabled={!kpi.is_active} maxLength={500} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, description: event.target.value } })} rows={2} />
+                      </div>
                       <div>
                         <label htmlFor={`unit-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Unit</label>
                         <Input id={`unit-${kpi.id}`} value={edit.unit} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, unit: event.target.value } })} />
@@ -310,6 +363,23 @@ export default function KpiAdminPage() {
                       <div>
                         <label htmlFor={`target-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Target / {edit.frequency}</label>
                         <Input id={`target-${kpi.id}`} type="number" min="0" step="any" value={edit.target} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, target: Number(event.target.value) } })} />
+                      </div>
+                      <div>
+                        <label htmlFor={`direction-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Success direction</label>
+                        <select id={`direction-${kpi.id}`} value={edit.measurement_direction} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, measurement_direction: event.target.value as KpiDraft['measurement_direction'] } })} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm disabled:opacity-50">
+                          <option value="higher">Higher is better</option><option value="lower">Lower is better</option><option value="binary">Binary target</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor={`category-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Category</label>
+                        <Input id={`category-${kpi.id}`} value={edit.category} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, category: event.target.value } })} />
+                      </div>
+                      <div>
+                        <label htmlFor={`objective-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Linked objective</label>
+                        <select id={`objective-${kpi.id}`} value={edit.objective_id || ''} disabled={!kpi.is_active} onChange={(event) => setEdits({ ...edits, [kpi.id]: { ...edit, objective_id: event.target.value || null } })} className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm disabled:opacity-50">
+                          <option value="">No linked objective</option>
+                          {objectives.map((objective) => <option key={objective.id} value={objective.id}>{objective.title}</option>)}
+                        </select>
                       </div>
                       <div>
                         <label htmlFor={`frequency-${kpi.id}`} className="mb-1 block text-xs font-medium text-slate-600">Frequency</label>

@@ -1,724 +1,242 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
-import { supabase } from '@/lib/supabase';
-import { useAuth } from '@/contexts/AuthContext';
+import { useMemo, useState } from 'react';
 import { TopBar } from '@/components/layout/TopBar';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Target, Plus, Building2, Users, User, Calendar, ChevronDown, ChevronRight, KeyRound, Trash2, CircleAlert as AlertCircle, CircleCheck as CheckCircle2, TriangleAlert as AlertTriangle, Clock, CirclePause as PauseCircle, Circle as XCircle } from 'lucide-react';
-
-const CheckCircle = CheckCircle2;
+import { SybellaLoadingState } from '@/components/ui/SybellaLoadingState';
+import { useAuth } from '@/contexts/AuthContext';
+import { usePerformanceData } from '@/hooks/use-performance-data';
+import { calculateAchievementPercent } from '@/lib/performance';
+import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import { Building2, CalendarDays, Plus, Target } from 'lucide-react';
 
 type ObjectiveLevel = 'company' | 'department' | 'team' | 'individual';
-type DBObjectiveStatus = 'active' | 'completed' | 'paused' | 'cancelled';
 
-interface Objective {
-  id: string;
-  title: string;
-  description: string | null;
-  level: ObjectiveLevel;
-  quarter: string;
-  year: number;
-  owner_id: string | null;
-  status: DBObjectiveStatus;
-  created_at: string;
-  owner?: { full_name: string } | null;
-  key_results?: KeyResult[];
-}
-
-interface KeyResult {
-  id: string;
-  objective_id: string;
-  title: string;
-  metric_type: string;
-  current_value: number;
-  target_value: number;
-  created_at: string;
-}
-
-const levelConfig: Record<ObjectiveLevel, { label: string; icon: typeof Building2; color: string; badge: string }> = {
-  company: { label: 'Company', icon: Building2, color: 'text-blue-600', badge: 'bg-blue-100 text-blue-800' },
-  department: { label: 'Department', icon: Users, color: 'text-purple-600', badge: 'bg-purple-100 text-purple-800' },
-  team: { label: 'Team', icon: Users, color: 'text-emerald-600', badge: 'bg-emerald-100 text-emerald-800' },
-  individual: { label: 'Individual', icon: User, color: 'text-amber-600', badge: 'bg-amber-100 text-amber-800' },
-};
-
-const dbStatusConfig: Record<DBObjectiveStatus, { label: string; badge: string; icon: typeof CheckCircle }> = {
-  active: { label: 'Active', badge: 'bg-emerald-100 text-emerald-800', icon: CheckCircle },
-  completed: { label: 'Completed', badge: 'bg-blue-100 text-blue-800', icon: CheckCircle2 },
-  paused: { label: 'Paused', badge: 'bg-amber-100 text-amber-800', icon: PauseCircle },
-  cancelled: { label: 'Cancelled', badge: 'bg-slate-200 text-slate-700', icon: XCircle },
-};
-
-function calcProgress(krs: KeyResult[]): number {
-  if (!krs || krs.length === 0) return 0;
-  const total = krs.reduce((sum, kr) => {
-    const pct = kr.target_value > 0 ? Math.min(100, (kr.current_value / kr.target_value) * 100) : 0;
-    return sum + pct;
-  }, 0);
-  return Math.round(total / krs.length);
-}
-
-function getHealthStatus(progress: number, dbStatus: DBObjectiveStatus) {
-  if (dbStatus === 'completed') return { label: 'Completed', badge: 'bg-blue-100 text-blue-800' };
-  if (dbStatus === 'paused') return { label: 'Paused', badge: 'bg-amber-100 text-amber-800' };
-  if (dbStatus === 'cancelled') return { label: 'Cancelled', badge: 'bg-slate-200 text-slate-700' };
-
-  if (progress >= 70) return { label: 'On Track', badge: 'bg-emerald-100 text-emerald-800' };
-  if (progress >= 40) return { label: 'At Risk', badge: 'bg-amber-100 text-amber-800' };
-  return { label: 'Behind', badge: 'bg-red-100 text-red-800' };
-}
-
-function getProgressColor(pct: number): string {
-  if (pct >= 80) return 'bg-emerald-500';
-  if (pct >= 50) return 'bg-amber-500';
-  if (pct > 0) return 'bg-blue-500';
-  return 'bg-slate-300';
-}
-
-export default function GoalsPage() {
+export default function ObjectivesPage() {
   const { profile } = useAuth();
-  const [objectives, setObjectives] = useState<Objective[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filterLevel, setFilterLevel] = useState<string>('all');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showObjectiveDialog, setShowObjectiveDialog] = useState(false);
-  const [showKRDialog, setShowKRDialog] = useState(false);
-  const [activeObjectiveId, setActiveObjectiveId] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const { data, loading, error, reload } = usePerformanceData(12);
+  const [levelFilter, setLevelFilter] = useState('all');
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [level, setLevel] = useState<ObjectiveLevel>('individual');
+  const [departmentId, setDepartmentId] = useState(profile?.department_id || '');
+  const [endDate, setEndDate] = useState('');
 
-  const [newObjective, setNewObjective] = useState<{
-    title: string;
-    description: string;
-    level: ObjectiveLevel;
-    quarter: string;
-    year: number;
-    owner_id: string;
-    status: DBObjectiveStatus;
-  }>({
-    title: '',
-    description: '',
-    level: 'company',
-    quarter: 'Q1',
-    year: new Date().getFullYear(),
-    owner_id: '',
-    status: 'active',
-  });
+  const canManageCompanyObjectives = ['admin', 'director', 'ceo', 'executive'].includes(profile?.role || '');
+  const canManageDepartmentObjectives = ['admin', 'director', 'ceo', 'executive', 'manager', 'marketing_manager', 'hr', 'legal_counsel'].includes(profile?.role || '');
+  const canCreate = profile?.role !== 'partner';
+  const levelOptions: ObjectiveLevel[] = canManageCompanyObjectives
+    ? ['company', 'department', 'team', 'individual']
+    : canManageDepartmentObjectives
+      ? ['department', 'team', 'individual']
+      : ['individual'];
 
-  const [newKR, setNewKR] = useState({
-    title: '',
-    metric_type: 'percentage',
-    current_value: 0,
-    target_value: 100,
-  });
-
-  useEffect(() => {
-    if (profile) fetchObjectives();
-  }, [profile]);
-
-  async function fetchObjectives() {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data, error } = await supabase
-        .from('objectives')
-        .select('*, owner:profiles!objectives_owner_id_fkey(full_name), key_results(*)')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setObjectives((data as Objective[]) || []);
-    } catch (err: any) {
-      console.error('Error fetching objectives:', err);
-      setError(err?.message || 'Failed to load objectives');
-      toast.error('Failed to load objectives');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleCreateObjective() {
-    if (!newObjective.title.trim()) {
-      toast.error('Objective title is required');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const payload = {
-        title: newObjective.title.trim(),
-        description: newObjective.description.trim() || null,
-        level: newObjective.level,
-        quarter: newObjective.quarter,
-        year: newObjective.year,
-        owner_id: newObjective.owner_id || profile?.id || null,
-        status: newObjective.status, // Always strictly 'active' | 'completed' | 'paused' | 'cancelled'
-      };
-
-      console.log('Sending objective payload:', payload);
-
-      const { error } = await supabase.from('objectives').insert(payload);
-      if (error) throw error;
-
-      toast.success('Objective created');
-      setShowObjectiveDialog(false);
-      setNewObjective({
-        title: '',
-        description: '',
-        level: 'company',
-        quarter: 'Q1',
-        year: new Date().getFullYear(),
-        owner_id: '',
-        status: 'active',
+  const objectives = useMemo(() => {
+    if (!data) return [];
+    return data.objectives
+      .filter((objective) => levelFilter === 'all' || objective.level === levelFilter)
+      .map((objective) => {
+        const linkedKpis = data.kpis.filter((kpi) => kpi.objective_id === objective.id);
+        const results = data.items.flatMap((item) => {
+          if (item.objective_id !== objective.id || item.number_value === null) return [];
+          const entry = data.entries.find((candidate) => candidate.id === item.entry_id);
+          if (!entry || entry.status !== 'approved') return [];
+          const achievement = calculateAchievementPercent(item.number_value, item.target_value, item.measurement_direction);
+          return achievement === null ? [] : [achievement];
+        });
+        const progress = results.length
+          ? results.reduce((sum, value) => sum + value, 0) / results.length
+          : null;
+        return { objective, linkedKpis, progress, resultCount: results.length };
       });
-      fetchObjectives();
-    } catch (err: any) {
-      console.error('Error creating objective:', err);
-      toast.error(err?.message || 'Failed to create objective');
-    } finally {
-      setSubmitting(false);
-    }
-  }
+  }, [data, levelFilter]);
 
-  async function handleCreateKR() {
-    if (!activeObjectiveId) return;
-    if (!newKR.title.trim()) {
-      toast.error('Key result title is required');
+  const createObjective = async () => {
+    if (!profile || !title.trim() || saving) return;
+    if (!levelOptions.includes(level)) {
+      toast.error('You do not have permission to create an objective at this level.');
       return;
     }
-    if (newKR.target_value <= 0) {
-      toast.error('Target value must be greater than 0');
+
+    const department = level === 'company'
+      ? null
+      : data?.departments.find((item) => item.id === departmentId) || null;
+    if (level !== 'company' && !department) {
+      toast.error('Choose an accessible department for this objective.');
       return;
     }
-    setSubmitting(true);
-    try {
-      const { error } = await supabase.from('key_results').insert({
-        objective_id: activeObjectiveId,
-        title: newKR.title.trim(),
-        metric_type: newKR.metric_type,
-        current_value: newKR.current_value,
-        target_value: newKR.target_value,
-      });
-      if (error) throw error;
-      toast.success('Key result added');
-      setShowKRDialog(false);
-      setNewKR({ title: '', metric_type: 'percentage', current_value: 0, target_value: 100 });
-      fetchObjectives();
-    } catch (err: any) {
-      console.error('Error creating key result:', err);
-      toast.error(err?.message || 'Failed to add key result');
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
-  async function handleUpdateKRValue(krId: string, currentValue: number) {
-    try {
-      const { error } = await supabase
-        .from('key_results')
-        .update({ current_value: currentValue })
-        .eq('id', krId);
-      if (error) throw error;
-      fetchObjectives();
-    } catch (err: any) {
-      console.error('Error updating key result:', err);
-      toast.error('Failed to update progress');
-    }
-  }
-
-  async function handleDeleteKR(krId: string) {
-    try {
-      const { error } = await supabase.from('key_results').delete().eq('id', krId);
-      if (error) throw error;
-      toast.success('Key result removed');
-      fetchObjectives();
-    } catch (err: any) {
-      console.error('Error deleting key result:', err);
-      toast.error('Failed to remove key result');
-    }
-  }
-
-  const filteredObjectives = useMemo(() => {
-    if (filterLevel === 'all') return objectives;
-    return objectives.filter((o) => o.level === filterLevel);
-  }, [objectives, filterLevel]);
-
-  const stats = useMemo(() => {
-    const levels: ObjectiveLevel[] = ['company', 'department', 'team', 'individual'];
-    return levels.map((level) => {
-      const items = objectives.filter((o) => o.level === level);
-      const avgProgress =
-        items.length > 0
-          ? Math.round(items.reduce((sum, o) => sum + calcProgress(o.key_results || []), 0) / items.length)
-          : 0;
-      return { level, count: items.length, avgProgress };
+    setSaving(true);
+    const currentQuarter = `Q${Math.floor(new Date().getMonth() / 3) + 1}`;
+    const { error: saveError } = await supabase.from('objectives').insert({
+      title: title.trim(),
+      description: description.trim() || null,
+      level,
+      department: department?.name || '',
+      department_id: department?.id || null,
+      quarter: currentQuarter,
+      year: new Date().getFullYear(),
+      owner_id: profile.id,
+      end_date: endDate || null,
+      status: 'active',
     });
-  }, [objectives]);
+    if (saveError) {
+      console.error('Unable to create objective:', saveError.message);
+      toast.error(saveError.message || 'Unable to create the objective.');
+      setSaving(false);
+      return;
+    }
+
+    toast.success('Objective created.');
+    setTitle('');
+    setDescription('');
+    setEndDate('');
+    setLevel('individual');
+    setDepartmentId(profile.department_id || '');
+    setShowForm(false);
+    setSaving(false);
+    await reload();
+  };
 
   if (loading) {
     return (
       <div>
-        <TopBar title="Goals & OKRs" subtitle="Loading..." />
-        <div className="flex items-center justify-center h-64">
-          <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        </div>
+        <TopBar title="Objectives" subtitle="Loading shared objectives and linked KPI results" />
+        <SybellaLoadingState text="Loading objectives" />
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div>
+        <TopBar title="Objectives" subtitle="Objectives are measured through approved KPI results" />
+        <main className="p-4 sm:p-6">
+          <section role="alert" className="rounded-xl border border-red-200 bg-white p-5 text-sm text-red-800">
+            <p>{error || 'Objective data is unavailable.'}</p>
+            <button type="button" onClick={() => void reload()} className="mt-3 rounded-md bg-blue-700 px-3 py-2 font-semibold text-white hover:bg-blue-800">Retry</button>
+          </section>
+        </main>
       </div>
     );
   }
 
   return (
     <div>
-      <TopBar title="Goals & OKRs" subtitle="Track objectives and key results across the organization" />
-      <div className="p-4 sm:p-6 space-y-5">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Goals & OKRs</h1>
-            <p className="text-slate-600">Track objectives and key results across the organization</p>
-          </div>
-          <Dialog open={showObjectiveDialog} onOpenChange={setShowObjectiveDialog}>
-            <DialogTrigger asChild>
-              <Button>
-                <Plus className="mr-2 h-4 w-4" />
-                New Objective
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create Objective</DialogTitle>
-                <DialogDescription>Define a new objective with level, quarter, and owner</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label>Objective Title</Label>
-                  <Input
-                    value={newObjective.title}
-                    onChange={(e) => setNewObjective({ ...newObjective, title: e.target.value })}
-                    placeholder="e.g. Increase market share"
-                  />
-                </div>
-                <div>
-                  <Label>Description</Label>
-                  <Textarea
-                    value={newObjective.description}
-                    onChange={(e) => setNewObjective({ ...newObjective, description: e.target.value })}
-                    placeholder="Optional context for this objective"
-                    rows={2}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label>Level</Label>
-                    <Select
-                      value={newObjective.level}
-                      onValueChange={(v: ObjectiveLevel) => setNewObjective({ ...newObjective, level: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="company">Company</SelectItem>
-                        <SelectItem value="department">Department</SelectItem>
-                        <SelectItem value="team">Team</SelectItem>
-                        <SelectItem value="individual">Individual</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Status</Label>
-                    <Select
-                      value={newObjective.status}
-                      onValueChange={(v: DBObjectiveStatus) => setNewObjective({ ...newObjective, status: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="paused">Paused</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <Label>Quarter</Label>
-                    <Select
-                      value={newObjective.quarter}
-                      onValueChange={(v) => setNewObjective({ ...newObjective, quarter: v })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Q1">Q1</SelectItem>
-                        <SelectItem value="Q2">Q2</SelectItem>
-                        <SelectItem value="Q3">Q3</SelectItem>
-                        <SelectItem value="Q4">Q4</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label>Year</Label>
-                    <Input
-                      type="number"
-                      value={newObjective.year}
-                      onChange={(e) =>
-                        setNewObjective({ ...newObjective, year: parseInt(e.target.value) || new Date().getFullYear() })
-                      }
-                    />
-                  </div>
-                  <div>
-                    <Label>Owner</Label>
-                    <Input
-                      value={newObjective.owner_id}
-                      onChange={(e) => setNewObjective({ ...newObjective, owner_id: e.target.value })}
-                      placeholder="User ID (optional)"
-                    />
-                  </div>
-                </div>
+      <TopBar title="Objectives" subtitle="Strategic priorities connected to approved KPI outcomes" />
+      <main className="space-y-5 p-4 sm:p-6">
+        <section className="flex flex-wrap items-end justify-between gap-3">
+          <label className="text-xs font-medium text-slate-600">
+            <span className="mb-1 block">Objective level</span>
+            <select value={levelFilter} onChange={(event) => setLevelFilter(event.target.value)} className="h-10 min-w-48 rounded-md border border-slate-300 bg-white px-3 text-sm">
+              <option value="all">All accessible objectives</option>
+              <option value="company">Company</option>
+              <option value="department">Department</option>
+              <option value="team">Team</option>
+              <option value="individual">Individual</option>
+            </select>
+          </label>
+          {canCreate && (
+            <button type="button" onClick={() => setShowForm((open) => !open)} className="inline-flex h-10 items-center gap-2 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800">
+              <Plus size={16} /> {showForm ? 'Cancel' : 'New objective'}
+            </button>
+          )}
+        </section>
+
+        {showForm && (
+          <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="font-semibold text-slate-900">Create objective</h2>
+            <p className="mt-1 text-sm text-slate-500">Objective progress comes from linked, approved KPI results. Avoid entering the same result twice.</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+                Title
+                <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-normal" placeholder="Increase recurring revenue" />
+              </label>
+              <label className="text-sm font-medium text-slate-700 sm:col-span-2">
+                Description
+                <textarea value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={3} className="mt-1 w-full rounded-md border border-slate-300 p-3 text-sm font-normal" placeholder="Describe the intended outcome and context" />
+              </label>
+              <label className="text-sm font-medium text-slate-700">
+                Level
+                <select value={level} onChange={(event) => setLevel(event.target.value as ObjectiveLevel)} className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal">
+                  {levelOptions.map((option) => <option key={option} value={option}>{option.charAt(0).toUpperCase() + option.slice(1)}</option>)}
+                </select>
+              </label>
+              {level !== 'company' && (
+                <label className="text-sm font-medium text-slate-700">
+                  Department
+                  <select value={departmentId} onChange={(event) => setDepartmentId(event.target.value)} disabled={!canManageCompanyObjectives} className="mt-1 h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm font-normal disabled:bg-slate-50">
+                    <option value="">Select department</option>
+                    {data.departments.map((department) => <option key={department.id} value={department.id}>{department.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="text-sm font-medium text-slate-700">
+                Target date
+                <input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-normal" />
+              </label>
+              <div className="flex items-end sm:col-span-2">
+                <button type="button" onClick={() => void createObjective()} disabled={!title.trim() || saving} className="h-10 rounded-md bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  {saving ? 'Saving…' : 'Create objective'}
+                </button>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowObjectiveDialog(false)}>
-                  Cancel
-                </Button>
-                <Button onClick={handleCreateObjective} disabled={submitting}>
-                  {submitting ? 'Creating...' : 'Create Objective'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        </div>
-
-        {/* Stats */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {stats.map((stat) => {
-            const cfg = levelConfig[stat.level];
-            const Icon = cfg.icon;
-            return (
-              <Card key={stat.level}>
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className={`p-2 rounded-lg bg-slate-50`}>
-                      <Icon className={`h-5 w-5 ${cfg.color}`} />
-                    </div>
-                    <span className="text-2xl font-bold text-slate-900">{stat.count}</span>
-                  </div>
-                  <p className="text-sm font-medium text-slate-700">{cfg.label} Objectives</p>
-                  <div className="mt-2 flex items-center gap-2">
-                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${getProgressColor(stat.avgProgress)}`}
-                        style={{ width: `${stat.avgProgress}%` }}
-                      />
-                    </div>
-                    <span className="text-xs font-semibold text-slate-500">{stat.avgProgress}%</span>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-
-        {/* Filter */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm font-medium text-slate-600">Filter:</span>
-          <Button
-            variant={filterLevel === 'all' ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setFilterLevel('all')}
-          >
-            All ({objectives.length})
-          </Button>
-          {(['company', 'department', 'team', 'individual'] as ObjectiveLevel[]).map((level) => {
-            const cfg = levelConfig[level];
-            const Icon = cfg.icon;
-            const count = objectives.filter((o) => o.level === level).length;
-            return (
-              <Button
-                key={level}
-                variant={filterLevel === level ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setFilterLevel(level)}
-                className="flex items-center gap-1.5"
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {cfg.label} ({count})
-              </Button>
-            );
-          })}
-        </div>
-
-        {/* Error State */}
-        {error && (
-          <Card className="border-red-200 bg-red-50">
-            <CardContent className="p-4 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
-              <Button variant="outline" size="sm" onClick={fetchObjectives} className="ml-auto">
-                Retry
-              </Button>
-            </CardContent>
-          </Card>
+            </div>
+          </section>
         )}
 
-        {/* Objectives List */}
-        {!error && filteredObjectives.length === 0 ? (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-12">
-              <Target className="h-12 w-12 text-slate-300 mb-4" />
-              <p className="text-slate-500 mb-2">No objectives found</p>
-              <p className="text-sm text-slate-400 mb-4">
-                {filterLevel === 'all'
-                  ? 'Create your first objective to get started'
-                  : `No ${levelConfig[filterLevel as ObjectiveLevel].label.toLowerCase()} objectives yet`}
-              </p>
-              <Button onClick={() => setShowObjectiveDialog(true)}>
-                <Plus className="mr-2 h-4 w-4" />
-                New Objective
-              </Button>
-            </CardContent>
-          </Card>
+        {objectives.length === 0 ? (
+          <section className="rounded-xl border border-dashed border-slate-300 bg-white p-10 text-center">
+            <Target className="mx-auto text-slate-400" size={30} aria-hidden="true" />
+            <h2 className="mt-3 font-semibold text-slate-800">No objectives found</h2>
+            <p className="mt-1 text-sm text-slate-500">Create an objective or change the level filter. Progress appears when linked KPIs have approved results.</p>
+          </section>
         ) : (
-          <div className="space-y-3">
-            {filteredObjectives.map((objective) => {
-              const cfg = levelConfig[objective.level];
-              const Icon = cfg.icon;
-              const progress = calcProgress(objective.key_results || []);
-              const isExpanded = expandedId === objective.id;
-              const health = getHealthStatus(progress, objective.status);
-              const dbCfg = dbStatusConfig[objective.status] || dbStatusConfig.active;
-
-              return (
-                <Card key={objective.id}>
-                  <CardContent className="p-4 sm:p-5">
-                    <div
-                      className="flex items-start justify-between gap-3 cursor-pointer"
-                      onClick={() => setExpandedId(isExpanded ? null : objective.id)}
-                    >
-                      <div className="flex items-start gap-3 flex-1 min-w-0">
-                        <div className="p-2.5 rounded-lg bg-slate-50 flex-shrink-0">
-                          <Icon className={`h-5 w-5 ${cfg.color}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-slate-900 text-sm truncate">{objective.title}</h3>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <Badge className={cfg.badge}>{cfg.label}</Badge>
-                            <Badge className={health.badge}>{health.label}</Badge>
-                            <Badge variant="outline" className="text-xs font-normal">
-                              Status: {dbCfg.label}
-                            </Badge>
-                            <span className="text-xs text-slate-500 flex items-center gap-1">
-                              <Calendar className="h-3 w-3" />
-                              {objective.quarter} {objective.year}
-                            </span>
-                            {objective.owner?.full_name && (
-                              <span className="text-xs text-slate-500">· {objective.owner.full_name}</span>
-                            )}
-                          </div>
-                          {objective.description && (
-                            <p className="text-sm text-slate-600 mt-2 line-clamp-2">{objective.description}</p>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        {isExpanded ? (
-                          <ChevronDown className="h-4 w-4 text-slate-400" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4 text-slate-400" />
-                        )}
-                      </div>
+          <section className="grid gap-4 lg:grid-cols-2">
+            {objectives.map(({ objective, linkedKpis, progress, resultCount }) => (
+              <article key={objective.id} className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-blue-700">
+                      <Building2 size={14} aria-hidden="true" /> {objective.level} · {objective.department || 'Company'}
                     </div>
-
-                    {/* Progress Bar */}
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${getProgressColor(progress)}`}
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <span className="text-sm font-semibold text-slate-700 min-w-[3rem] text-right">{progress}%</span>
-                    </div>
-
-                    {/* Key Results (expanded) */}
-                    {isExpanded && (
-                      <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-semibold text-slate-700 flex items-center gap-1.5">
-                            <KeyRound className="h-4 w-4" />
-                            Key Results ({objective.key_results?.length || 0})
-                          </h4>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveObjectiveId(objective.id);
-                              setShowKRDialog(true);
-                            }}
-                          >
-                            <Plus className="mr-1 h-3.5 w-3.5" />
-                            Add KR
-                          </Button>
-                        </div>
-
-                        {objective.key_results && objective.key_results.length > 0 ? (
-                          <div className="space-y-2">
-                            {objective.key_results.map((kr) => {
-                              const krPct =
-                                kr.target_value > 0
-                                  ? Math.min(100, Math.round((kr.current_value / kr.target_value) * 100))
-                                  : 0;
-                              return (
-                                <div key={kr.id} className="bg-slate-50 rounded-lg p-3">
-                                  <div className="flex items-start justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-slate-800">{kr.title}</p>
-                                      <p className="text-xs text-slate-500 mt-0.5 capitalize">
-                                        {kr.metric_type} · {kr.current_value} / {kr.target_value}
-                                      </p>
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-shrink-0">
-                                      <span className="text-xs font-semibold text-slate-600">{krPct}%</span>
-                                      {krPct >= 100 && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleDeleteKR(kr.id);
-                                        }}
-                                        className="text-slate-400 hover:text-red-500"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                  <div className="mt-2 flex items-center gap-2">
-                                    <div className="flex-1 h-1.5 rounded-full bg-slate-200 overflow-hidden">
-                                      <div
-                                        className={`h-full rounded-full ${getProgressColor(krPct)}`}
-                                        style={{ width: `${krPct}%` }}
-                                      />
-                                    </div>
-                                    <Input
-                                      type="number"
-                                      value={kr.current_value}
-                                      onChange={(e) => {
-                                        e.stopPropagation();
-                                        const val = parseFloat(e.target.value) || 0;
-                                        handleUpdateKRValue(kr.id, val);
-                                      }}
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-20 h-7 text-xs"
-                                      step="any"
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-slate-400 text-center py-4">
-                            No key results yet. Add one to start tracking progress.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+                    <h2 className="mt-2 text-lg font-semibold text-slate-900">{objective.title}</h2>
+                    {objective.description && <p className="mt-1 text-sm text-slate-600">{objective.description}</p>}
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs capitalize text-slate-700">{objective.status}</span>
+                </div>
+                <div className="mt-5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-slate-500">Approved KPI achievement</span>
+                    <span className="font-semibold text-slate-900">{progress === null ? 'No approved results' : `${Math.round(progress)}%`}</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                    {progress !== null && <div className="h-full rounded-full bg-blue-700" style={{ width: `${Math.min(100, Math.max(0, progress))}%` }} />}
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">{resultCount} approved KPI results · target {objective.quarter || '—'} {objective.year}</p>
+                </div>
+                <div className="mt-4 border-t border-slate-100 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Linked KPIs</p>
+                  {linkedKpis.length ? (
+                    <ul className="mt-2 space-y-2">
+                      {linkedKpis.map((kpi) => (
+                        <li key={kpi.id} className="flex items-center justify-between gap-3 text-sm">
+                          <span className="text-slate-700">{kpi.title}</span>
+                          <span className="whitespace-nowrap text-slate-500">{kpi.target} {kpi.unit} / {kpi.frequency}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : <p className="mt-2 text-sm text-slate-500">No KPIs linked yet. An administrator can connect KPIs in KPI configuration.</p>}
+                </div>
+                {objective.end_date && (
+                  <p className="mt-4 flex items-center gap-2 text-xs text-slate-500"><CalendarDays size={14} aria-hidden="true" /> Target date {objective.end_date}</p>
+                )}
+              </article>
+            ))}
+          </section>
         )}
-      </div>
-
-      {/* Key Result Dialog */}
-      <Dialog open={showKRDialog} onOpenChange={setShowKRDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add Key Result</DialogTitle>
-            <DialogDescription>Define a measurable key result for this objective</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Key Result Title</Label>
-              <Input
-                value={newKR.title}
-                onChange={(e) => setNewKR({ ...newKR, title: e.target.value })}
-                placeholder="e.g. Achieve 95% customer satisfaction"
-              />
-            </div>
-            <div>
-              <Label>Metric Type</Label>
-              <Select
-                value={newKR.metric_type}
-                onValueChange={(v) => setNewKR({ ...newKR, metric_type: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="percentage">Percentage (%)</SelectItem>
-                  <SelectItem value="number">Number</SelectItem>
-                  <SelectItem value="currency">Currency ($)</SelectItem>
-                  <SelectItem value="boolean">Boolean (Yes/No)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label>Current Value</Label>
-                <Input
-                  type="number"
-                  value={newKR.current_value}
-                  onChange={(e) => setNewKR({ ...newKR, current_value: parseFloat(e.target.value) || 0 })}
-                  step="any"
-                />
-              </div>
-              <div>
-                <Label>Target Value</Label>
-                <Input
-                  type="number"
-                  value={newKR.target_value}
-                  onChange={(e) => setNewKR({ ...newKR, target_value: parseFloat(e.target.value) || 0 })}
-                  step="any"
-                />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowKRDialog(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateKR} disabled={submitting}>
-              {submitting ? 'Adding...' : 'Add Key Result'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </main>
     </div>
   );
 }
