@@ -101,7 +101,11 @@ export default function KpiAdminPage() {
     setKpis(allKpis);
     setObjectives((objectiveResult.data || []) as Objective[]);
     setSelectedUserId((current) => current && activeMembers.some((member) => member.id === current) ? current : activeMembers[0]?.id || '');
-    const availableDepartments = [...new Set(activeMembers.map((member) => member.department?.trim()).filter((department): department is string => Boolean(department)))].sort((a, b) => a.localeCompare(b));
+    const availableDepartments = activeMembers
+      .map((member) => member.department?.trim())
+      .filter((department): department is string => Boolean(department))
+      .filter((department, index, all) => all.indexOf(department) === index)
+      .sort((a, b) => a.localeCompare(b));
     setSelectedDepartment((current) => current && availableDepartments.includes(current) ? current : availableDepartments[0] || '');
     setEdits(Object.fromEntries(allKpis.map((kpi) => [kpi.id, {
       title: kpi.title,
@@ -124,7 +128,11 @@ export default function KpiAdminPage() {
 
   const selectedMember = members.find((member) => member.id === selectedUserId);
   const departments = useMemo(
-    () => [...new Set(members.map((member) => member.department?.trim()).filter((department): department is string => Boolean(department)))].sort((a, b) => a.localeCompare(b)),
+    () => members
+      .map((member) => member.department?.trim())
+      .filter((department): department is string => Boolean(department))
+      .filter((department, index, all) => all.indexOf(department) === index)
+      .sort((a, b) => a.localeCompare(b)),
     [members]
   );
   const departmentMembers = members.filter((member) => member.department?.trim().toLowerCase() === selectedDepartment.trim().toLowerCase());
