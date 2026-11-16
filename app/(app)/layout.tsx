@@ -63,22 +63,27 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <WorkspaceChrome>
-      <div className="min-h-[65vh] md:flex">
-        <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
-        <div className="min-w-0 flex-1 md:ml-64">
-        {/* Mobile menu button - visible only on small screens */}
-        <button
-          onClick={() => setMobileSidebarOpen(true)}
-          className="md:hidden fixed top-3 left-3 z-30 p-2 rounded-lg bg-white shadow-md border border-slate-200 text-slate-600 hover:bg-slate-50"
-          aria-label="Open menu"
-        >
-          <Menu size={20} />
-        </button>
-        {children}
-        <CelebrationOverlay />
+    <div className="min-h-screen md:flex">
+      <Sidebar mobileOpen={mobileSidebarOpen} onClose={() => setMobileSidebarOpen(false)} />
+      <div className="min-w-0 flex-1 md:ml-64">
+        <WorkspaceChrome>
+          <div className="min-h-[65vh] min-w-0">
+            <div className="px-4 pt-3 md:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileSidebarOpen(true)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm hover:bg-slate-50"
+                aria-label="Open menu"
+              >
+                <Menu size={18} />
+                Menu
+              </button>
+            </div>
+            {children}
+            <CelebrationOverlay />
+          </div>
+        </WorkspaceChrome>
         </div>
-      </div>
-    </WorkspaceChrome>
+    </div>
   );
 }
